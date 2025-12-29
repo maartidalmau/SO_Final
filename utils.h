@@ -16,7 +16,6 @@
 #define CYAN "\x1B[36m"
 #define RESET "\x1B[0m"
 
-#define MAX_TOKENS 8
 
 void* safeMalloc(int size);
 

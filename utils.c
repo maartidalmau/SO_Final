@@ -33,55 +33,50 @@ void trimNewline(char *str) {
     }
 }
 
-
-int customRead(int fdesc, char** string, char delim) {
+int customRead(int fdesc, char **string, char delim) {
     char buffer;
     int bytesRead;
     int len = 0;
+    char *tmp;
+
+    if (!string)
+        return -1;
 
     *string = NULL;
 
     while (1) {
         bytesRead = read(fdesc, &buffer, 1);
-
-        if (bytesRead < 0) {
-            safeFree((void**)string);
+        if (bytesRead < 0)
+        {
+            safeFree((void **)string);
             return -1;
         }
 
-        if (bytesRead == 0) { // EOF
-            trimNewline(*string);
-            return 1;
-        }
-
-        if (buffer == delim) {
+        if (bytesRead == 0)
             break;
+
+        if (buffer == delim)
+            break;
+
+        tmp = realloc(*string, len + 2);
+        if (!tmp)
+        {
+            safeFree((void **)string);
+            return -1;
         }
 
-        if (*string == NULL) {
-            *string = safeMalloc(2); // 1 byte + '\0'
-            if (!*string) {
-                return -1;
-            }
-            (*string)[0] = buffer;
-            (*string)[1] = '\0';
-            len = 1;
-        } else {
-            char* tmp = realloc(*string, len + 2);
-            if (!tmp) {
-                safeFree((void**)string);
-                return -1;
-            }
-            *string = tmp;
-            (*string)[len] = buffer;
-            len++;
-            (*string)[len] = '\0';
-        }
+        *string = tmp;
+        (*string)[len++] = buffer;
+        (*string)[len] = '\0';
     }
 
+    if (len == 0 && bytesRead == 0)
+        return 0;
+
     trimNewline(*string);
-    return 0;
+    return 1;
 }
+
 
 void removeChar(char *str, char c) {
     if (str == NULL) {

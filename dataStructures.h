@@ -1,6 +1,12 @@
 #ifndef DATASTRUCTURES_H
 #define DATASTRUCTURES_H
 
+#include <signal.h>
+#include "utils.h"
+
+#define MAX_TOKENS 10  // Augmentat per noms de productes amb espais
+#define MAX_COMMAND_LENGTH 512
+
 typedef struct {
     char name[100];
     int amount;
@@ -26,6 +32,18 @@ typedef struct {
 } Alliance;
 
 typedef struct {
+    char *name;
+    int amount;
+} TradeProduct;
+
+typedef struct {
+    char *kingdom;
+    TradeProduct *products;
+    int numProducts;
+    int totalAmount;
+} Trade;
+
+typedef struct {
     // Maester information
     char *name;
     char *path;
@@ -45,7 +63,10 @@ typedef struct {
     Alliance *alliances;
     int numAlliances;
 
-
+    volatile sig_atomic_t running;
 } Maester;
+
+
+int readConfigFile(char *filename, Maester *maester);
 
 #endif

@@ -38,18 +38,18 @@ int readConfigFile(char *filename, Maester *maester) {
     char *aux = NULL;
     customRead(fd, &aux, '\n');
     maester->envoys = atoi(aux);
-    safreFree((void**)&aux);
+    safeFree((void**)&aux);
 
     //Read path var
     customRead(fd, &(maester->ip), '\n');
 
     customRead(fd, &aux, '\n');
     maester->port = atoi(aux);
-    safreFree((void**)&aux);
+    safeFree((void**)&aux);
 
     //Read useless line
     customRead(fd, &aux, '\n');
-    safreFree((void**)&aux);
+    safeFree((void**)&aux);
 
     //Read routes
     int eof = customRead(fd, &aux, ' ');
@@ -65,7 +65,7 @@ int readConfigFile(char *filename, Maester *maester) {
         //Remove & if exists 
         removeChar(aux, '&');
         maester->routes[maester->numRoutes].name = strdup(aux);
-        safreFree((void**)&aux);
+        safeFree((void**)&aux);
 
         //Read ip var
         customRead(fd, &maester->routes[maester->numRoutes].ip, ' ');
@@ -78,7 +78,7 @@ int readConfigFile(char *filename, Maester *maester) {
         maester->numRoutes++;
 
         //Read next line if exists
-        int eof = customRead(fd, &aux, ' ');
+        eof = customRead(fd, &aux, ' ');
     }
 
     safeFree((void**)&aux);

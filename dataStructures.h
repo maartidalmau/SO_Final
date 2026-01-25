@@ -2,6 +2,8 @@
 #define DATASTRUCTURES_H
 
 #include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "utils.h"
 
 #define MAX_TOKENS 10  // Augmentat per noms de productes amb espais
@@ -68,5 +70,7 @@ typedef struct {
 
 
 int readConfigFile(char *filename, Maester *maester);
+
+int readProducts(char *filename, Maester *maester);
 
 #endif

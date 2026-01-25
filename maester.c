@@ -1,8 +1,11 @@
 //ports 8095-8099 --> marti
 //ports 8395-8399 --> unai
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <signal.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "dataStructures.h"
 #include "utils.h"
@@ -34,7 +37,7 @@ int main(int argc, char *argv[]) {
     }
 
     //Implementar funcio per llegir els fitxers de configuracio dels maesters
-    maesterData = readConfigFile(argv[1], maesterData);
+    readConfigFile(argv[1], maesterData); //TODO COMPROBAR RETURN
 
     if (maesterData == NULL) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, argv[1], RESET);
@@ -44,14 +47,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-//Implementar funcior per llegir el fitxer data
-    maesterData->inventory = readBinary(argv[2], &maesterData->numProducts);
+    //Implementar funcior per llegir el fitxer data
+    readProducts(argv[2], maesterData); //TODO COMPROBAR RETURN
 
     if (maesterData->inventory == NULL) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, argv[2], RESET);
         customWrite(1, msg);
         free(msg);
-        freeMaesterData(&maesterData);
+        //freeMaesterData(&maesterData);
 
         return 1;
     }

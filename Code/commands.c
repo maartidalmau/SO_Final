@@ -1,11 +1,4 @@
 #include "commands.h"
-#include "utils.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-
 
 void consoleLogic(Maester *maester) {
     char *command = NULL;
@@ -270,8 +263,10 @@ void displayAvailableProducts(Maester *maester) {
 }
 
 int isProductInInventory(char *productName, Maester *maester) {
-    if (!productName || !maester) return 0;
-    
+    if (!productName || !maester) {
+        return 0;
+    }
+
     for (int i = 0; i < maester->numProducts; i++) {
         if (strcasecmp(maester->inventory[i].name, productName) == 0) {
             // Copiar el nom exacte (case-sensitive) del producte
@@ -283,8 +278,10 @@ int isProductInInventory(char *productName, Maester *maester) {
 }
 
 int checkRealm(Trade *trade, Maester *maester) {
-    if (!trade || !maester) return 0;
-    
+    if (!trade || !maester) {
+        return 0;
+    }
+
     for (int i = 0; i < maester->numRoutes; i++) {
         if (strcasecmp(trade->kingdom, maester->routes[i].name) == 0) {
             // Copiar el nom exacte del realm

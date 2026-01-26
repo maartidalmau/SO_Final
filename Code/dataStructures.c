@@ -27,6 +27,8 @@ int readConfigFile(char *filename, Maester *maester) {
     if (fd < 0) {
         return 1;
     }
+    //Init maester struct
+    initMaester(maester);
 
     //Read name var
     customRead(fd, &(maester->name), '\n');
@@ -40,9 +42,10 @@ int readConfigFile(char *filename, Maester *maester) {
     maester->envoys = atoi(aux);
     safeFree((void**)&aux);
 
-    //Read path var
+    //Read ip var
     customRead(fd, &(maester->ip), '\n');
 
+    //Read port var
     customRead(fd, &aux, '\n');
     maester->port = atoi(aux);
     safeFree((void**)&aux);
@@ -54,7 +57,7 @@ int readConfigFile(char *filename, Maester *maester) {
     //Read routes
     int eof = customRead(fd, &aux, ' ');
 
-    while (!eof) {
+    while (eof) {
         //Realloc
         Route* t = realloc(maester->routes, sizeof(Route)*(maester->numRoutes+1));
         maester->routes = t;

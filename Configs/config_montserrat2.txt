@@ -1,0 +1,9 @@
+KingsLanding
+/kingslanding_stock
+3
+192.168.1.5
+8096
+--- ROUTES ---
+DEFAULT 192.168.1.5 8095
+TheVale 192.168.1.5 8095
+Dragonstone 192.168.1.3 8095

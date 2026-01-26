@@ -4,9 +4,13 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "utils.h"
 
-#define MAX_TOKENS 10  // Augmentat per noms de productes amb espais
+
 #define MAX_COMMAND_LENGTH 512
 
 typedef struct {
@@ -31,6 +35,7 @@ typedef struct {
     char *name;
     char *ip;
     int port;
+    int status; // 0: inactive, 1: active
 } Alliance;
 
 typedef struct {

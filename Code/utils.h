@@ -16,6 +16,8 @@
 #define CYAN "\x1B[36m"
 #define RESET "\x1B[0m"
 
+#define MAX_TOKENS 15 // Augmentat per noms de productes amb espais
+
 
 void* safeMalloc(int size);
 

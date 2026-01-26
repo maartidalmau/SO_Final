@@ -39,9 +39,9 @@ int customRead(int fdesc, char **string, char delim) {
     int len = 0;
     char *tmp;
 
-    if (!string)
+    if (!string) {
         return -1;
-
+    }
     *string = NULL;
 
     while (1) {
@@ -70,10 +70,13 @@ int customRead(int fdesc, char **string, char delim) {
         (*string)[len] = '\0';
     }
 
-    if (len == 0 && bytesRead == 0)
+    if (len == 0 && bytesRead == 0) {
         return 0;
+    }
 
-    trimNewline(*string);
+    if (*string) {
+        trimNewline(*string);
+    }
     return 1;
 }
 

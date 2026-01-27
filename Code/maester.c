@@ -9,7 +9,7 @@
 
 #include "dataStructures.h"
 #include "utils.h"
-#include "commands.h"
+#include "console.h"
 
 volatile sig_atomic_t *running = NULL;
 

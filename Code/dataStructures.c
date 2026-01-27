@@ -154,3 +154,61 @@ int readProducts(char *filename, Maester *maester) {
     close(fd);
     return 0;
 }
+
+void destroyMaester(Maester *maester) {
+    if (!maester) {
+        return;
+    }
+
+    // Free maester info
+    safeFree((void**)&maester->name);
+    safeFree((void**)&maester->path);
+    safeFree((void**)&maester->ip);
+
+    // Free inventory
+    for (int i = 0; i < maester->numProducts; i++) {
+        safeFree((void**)&maester->inventory[i].name);
+    }
+    safeFree((void**)&maester->inventory);
+
+    // Free routes
+    for (int i = 0; i < maester->numRoutes; i++) {
+        safeFree((void**)&maester->routes[i].name);
+        safeFree((void**)&maester->routes[i].ip);
+    }
+    safeFree((void**)&maester->routes);
+
+    // Free alliances
+    for (int i = 0; i < maester->numAlliances; i++) {
+        safeFree((void**)&maester->alliances[i].name);
+        safeFree((void**)&maester->alliances[i].ip);
+    }
+    safeFree((void**)&maester->alliances);
+    free(maester);
+
+    return;
+}
+
+void freeTrade(Trade **trade) {
+    if (!trade || !*trade) return;
+    
+    Trade *t = *trade;
+    
+    if (t->kingdom) {
+        free(t->kingdom);
+        t->kingdom = NULL;
+    }
+    
+    if (t->products) {
+        for (int i = 0; i < t->numProducts; i++) {
+            if (t->products[i].name) {
+                free(t->products[i].name);
+            }
+        }
+        free(t->products);
+        t->products = NULL;
+    }
+    
+    free(t);
+    *trade = NULL;
+}

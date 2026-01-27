@@ -11,32 +11,34 @@
 #include "utils.h"
 #include "commands.h"
 
-Maester *maesterData = NULL;
+volatile sig_atomic_t *running = NULL;
 
 void rsiCtrlC() {
-    if (maesterData) {
-        maesterData->running = 0;
+    if (running) {
+        *running = 0;
     }
-    raise(SIGINT);
 }
 
-int loadMaesterData(char *configFile, char *stockFile) {
+int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
     char *msg;
-    maesterData = malloc(sizeof(Maester));
+    *maester = malloc(sizeof(Maester));
 
-    if (readConfigFile(configFile, maesterData)) {
+    if (readConfigFile(configFile, *maester)) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, configFile, RESET);
         customWrite(1, msg);
         free(msg);
         return 1;
     }
 
-    if (readProducts(stockFile, maesterData)) {
+    if (readProducts(stockFile, *maester)) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, stockFile, RESET);
         customWrite(1, msg);
         free(msg);
         return 1;
     }
+
+    running = &((*maester)->running);
+
     return 0;
 }
 
@@ -56,14 +58,19 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (loadMaesterData(argv[1], argv[2])) {
+    Maester *maester = NULL;
+    if (loadMaesterData(&maester, argv[1], argv[2])) {
         return 1;
     }
 
     sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL); //CREC QUE SHA DE BORRAR
 
-    consoleLogic(maesterData);
+    //Load console
+    consoleLogic(maester);
+
+    //Remove allocated memory
+    destroyMaester(maester);
+    maester = NULL;
 
     return 0;
 }

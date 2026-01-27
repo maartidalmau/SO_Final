@@ -1,8 +1,12 @@
 #include "commands.h"
 
 void consoleLogic(Maester *maester) {
-    char *command = NULL;
+    char *command = NULL, *msg = NULL;
     int exitStatus = 0;
+
+    asprintf(&msg, "%sMaester of %s initialized. The board is set.%s\n", GREEN, maester->name, RESET);
+    customWrite(1, msg);
+    free(msg);
 
     while (!exitStatus && maester->running) {
         customWrite(1, GREEN "$ " RESET);
@@ -12,6 +16,20 @@ void consoleLogic(Maester *maester) {
         
         exitStatus = commandHandler(&command, maester);
     }
+
+    //Ha sigut Ctrl+C
+    if (!maester->running) {
+        customWrite(1, YELLOW "\nShutting down Maester services... (Ctrl + C detected)\n" RESET);
+    }
+
+    //L'usuari ha fet exit
+    if (exitStatus) {
+        maester->running = 0;
+    }
+
+    asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);
+    customWrite(1, msg);
+    free(msg);
 }
 
 int commandHandler(char **command, Maester *maester) {
@@ -156,10 +174,6 @@ int commandHandler(char **command, Maester *maester) {
     // EXIT
     else if (strcasecmp(tokens[0], "EXIT") == 0) {
         if (count == 1) {
-            char *msg;
-            asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);
-            customWrite(1, msg);
-            free(msg);
             exit = 1;
         } else {
             customWrite(1, YELLOW "Did you mean EXIT? Please review syntax.\n" RESET);
@@ -597,28 +611,4 @@ void startTrade(Trade *trade, Maester *maester) {
         
         safeFree((void**)&command);
     }
-}
-
-void freeTrade(Trade **trade) {
-    if (!trade || !*trade) return;
-    
-    Trade *t = *trade;
-    
-    if (t->kingdom) {
-        free(t->kingdom);
-        t->kingdom = NULL;
-    }
-    
-    if (t->products) {
-        for (int i = 0; i < t->numProducts; i++) {
-            if (t->products[i].name) {
-                free(t->products[i].name);
-            }
-        }
-        free(t->products);
-        t->products = NULL;
-    }
-    
-    free(t);
-    *trade = NULL;
 }

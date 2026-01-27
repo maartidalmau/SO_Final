@@ -78,4 +78,8 @@ int readConfigFile(char *filename, Maester *maester);
 
 int readProducts(char *filename, Maester *maester);
 
+void destroyMaester(Maester *maester);
+
+void freeTrade(Trade **trade);
+
 #endif

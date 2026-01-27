@@ -37,7 +37,5 @@ int handleAddCommand(Trade *trade, char *productName, int quantity, Maester *mae
 int handleRemoveCommand(Trade *trade, char *productName, int quantity);
 char* buildProductName(char *tokens[], int count);
 
-// Cleanup
-void freeTrade(Trade **trade);
 
 #endif

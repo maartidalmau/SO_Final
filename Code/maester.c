@@ -76,6 +76,7 @@ int main(int argc, char *argv[]) {
     }
 
     //Stop server thread
+    //enlloc de shutdown fer un pthread_kill
     shutdown(maester->serverSocket, SHUT_RDWR);
     pthread_join(serverThreadID, NULL);
 

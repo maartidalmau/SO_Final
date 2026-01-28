@@ -10,9 +10,7 @@ void listRealms(Maester *maester) {
         }
         
         char *msg;
-        asprintf(&msg, "  %s%s%s -> %s:%d\n", 
-                CYAN, maester->routes[i].name, RESET,
-                maester->routes[i].ip, maester->routes[i].port);
+        asprintf(&msg, BLUE "\t- %s\n" RESET, maester->routes[i].name);
         customWrite(1, msg);
         free(msg);
         found = 1;
@@ -30,12 +28,12 @@ void listInventory(Maester *maester) {
     }
 
     customWrite(1, MAGENTA "--- Trade Ledger ---\n" RESET);
-    customWrite(1, YELLOW "Item                      | Value (Gold) | Weight (Stone)\n" RESET);
-    customWrite(1, YELLOW "--------------------------------------------------------\n" RESET);
+    customWrite(1, YELLOW "Item                           | Value (Gold) | Weight (Stone)\n" RESET);
+    customWrite(1, YELLOW "------------------------------------------------------------------\n" RESET);
 
     for (int i = 0; i < maester->numProducts; i++) {
         char *msg;
-        asprintf(&msg, "%s%-25s | %-12d | %-12.1f%s\n", 
+        asprintf(&msg, "%s%-30s | %-12d | %-12.1f%s\n", 
                 CYAN, 
                 maester->inventory[i].name, 
                 maester->inventory[i].amount, 
@@ -45,7 +43,7 @@ void listInventory(Maester *maester) {
         free(msg);
     }
 
-    customWrite(1, YELLOW "--------------------------------------------------------\n" RESET);
+    customWrite(1, YELLOW "------------------------------------------------------------------\n" RESET);
     
     char *msg;
     asprintf(&msg, "%sTotal Entries: %d%s\n", GREEN, maester->numProducts, RESET);

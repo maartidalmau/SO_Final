@@ -1,12 +1,13 @@
 #COMPILER
 CC = gcc
-FLAGS = -Wall -Wextra -Werror -pthread -I./console -I.
-DFLAGS = -Wall -Wextra -g -pthread -I./console -I.
+FLAGS = -Wall -Wextra -Werror -pthread -I. -I./console -I./network 
+DFLAGS = -Wall -Wextra -g -pthread -I. -I./console -I./network
 
 SRC = maester.c \
 	  console/console.c \
 	  console/trade.c \
 	  console/list.c \
+	  network/server.c \
 	  utils.c \
 	  dataStructures.c
 
@@ -32,3 +33,9 @@ fclean: clean
 	rm -f $(BINARY)
 
 rebuild: fclean all
+
+gdb: 
+	gdb ./$(BINARY)
+
+valgrind: 
+	valgrind --leak-check=full ./$(BINARY)

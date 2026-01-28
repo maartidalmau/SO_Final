@@ -10,6 +10,7 @@
 #include "dataStructures.h"
 #include "utils.h"
 #include "console.h"
+#include "server.h"
 
 volatile sig_atomic_t *running = NULL;
 
@@ -65,12 +66,26 @@ int main(int argc, char *argv[]) {
 
     sigaction(SIGINT, &sa, NULL);
 
-    //Load console
-    consoleLogic(maester);
+    //Load server socket
+    pthread_t serverThreadID;
+    pthread_create(&serverThreadID, NULL, serverThread, (void *)maester);
 
+    //Load console
+    if (maester->running) {
+        consoleLogic(maester);
+    }
+
+    //Stop server thread
+    shutdown(maester->serverSocket, SHUT_RDWR);
+    pthread_join(serverThreadID, NULL);
+
+    asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);
+    customWrite(1, msg);
+    free(msg);
+    
     //Remove allocated memory
     destroyMaester(maester);
-    maester = NULL;
+    maester = NULL; //Mirar si fa falta
 
     return 0;
 }

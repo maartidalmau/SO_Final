@@ -1,5 +1,7 @@
 #include "utils.h"
 
+pthread_mutex_t stdoutMutex = PTHREAD_MUTEX_INITIALIZER;
+
 void* safeMalloc(int size) {
     void* ptr = malloc(size);
     if (ptr == NULL) {
@@ -20,8 +22,18 @@ int isAllocated(void* ptr) {
     return ptr != NULL;
 }
 
+void lockStdout() {
+    pthread_mutex_lock(&stdoutMutex);
+}
+
+void unlockStdout() {
+    pthread_mutex_unlock(&stdoutMutex);
+}
+
 void customWrite(int fdesc, char* string) {
+    pthread_mutex_lock(&stdoutMutex);
     write(fdesc, string, strlen(string));
+    pthread_mutex_unlock(&stdoutMutex);
 }
 
 void trimNewline(char *str) {

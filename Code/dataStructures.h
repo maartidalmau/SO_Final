@@ -71,6 +71,8 @@ typedef struct {
     int numAlliances;
 
     volatile sig_atomic_t running;
+
+    int serverSocket;
 } Maester;
 
 

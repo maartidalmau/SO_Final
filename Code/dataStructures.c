@@ -13,6 +13,7 @@ void initMaester(Maester* m) {
     m->alliances = NULL;
     m->numAlliances = 0;
     m->running = 1;
+    m->serverSocket = -1;
 }
 
 void initRoute(Route *r) {

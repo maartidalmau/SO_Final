@@ -197,8 +197,4 @@ void consoleLogic(Maester *maester) {
     if (exitStatus) {
         maester->running = 0;
     }
-
-    asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);
-    customWrite(1, msg);
-    free(msg);
 }

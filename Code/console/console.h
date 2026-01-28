@@ -12,8 +12,7 @@
 #include "dataStructures.h"
 #include "list.h"
 #include "trade.h"
-#include "envoy.h"
-#include "pledge.h"
+
 
 void consoleLogic(Maester *maester);
 

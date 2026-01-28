@@ -1,0 +1,2 @@
+- Es pot usar la funcio shutdown per tancar la conexio de sockets
+- Preguntar tema mutex pels outputs

@@ -7,6 +7,7 @@
 #include <string.h>   // strdup, strcpy, strlen
 #include <strings.h>  // strcasecmp
 #include <unistd.h>   // read, write, close
+#include <pthread.h>
 
 #define RED "\x1B[31m"
 #define GREEN "\x1B[32m"

@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #include "utils.h"
 
@@ -73,6 +75,12 @@ typedef struct {
     volatile sig_atomic_t running;
 
     int serverSocket;
+
+    // Synchronization
+    pthread_mutex_t routes_mutex;      // Protects routes[]
+    pthread_mutex_t alliances_mutex;   // Protects alliances[]
+    pthread_mutex_t inventory_mutex;   // Protects inventory[]
+    sem_t envoys_sem;                  // Limits concurrent outgoing connections
 } Maester;
 
 

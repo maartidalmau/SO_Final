@@ -14,6 +14,12 @@ void initMaester(Maester* m) {
     m->numAlliances = 0;
     m->running = 1;
     m->serverSocket = -1;
+    
+    // Initialize synchronization primitives
+    pthread_mutex_init(&m->routes_mutex, NULL);
+    pthread_mutex_init(&m->alliances_mutex, NULL);
+    pthread_mutex_init(&m->inventory_mutex, NULL);
+    // envoys_sem will be initialized after reading config (with m->envoys value)
 }
 
 void initRoute(Route *r) {
@@ -42,6 +48,9 @@ int readConfigFile(char *filename, Maester *maester) {
     customRead(fd, &aux, '\n');
     maester->envoys = atoi(aux);
     safeFree((void**)&aux);
+    
+    // Initialize envoys semaphore with the number of available envoys
+    sem_init(&maester->envoys_sem, 0, maester->envoys);
 
     //Read ip var
     customRead(fd, &(maester->ip), '\n');
@@ -185,6 +194,13 @@ void destroyMaester(Maester *maester) {
         safeFree((void**)&maester->alliances[i].ip);
     }
     safeFree((void**)&maester->alliances);
+    
+    // Destroy synchronization primitives
+    pthread_mutex_destroy(&maester->routes_mutex);
+    pthread_mutex_destroy(&maester->alliances_mutex);
+    pthread_mutex_destroy(&maester->inventory_mutex);
+    sem_destroy(&maester->envoys_sem);
+    
     free(maester);
 
     return;

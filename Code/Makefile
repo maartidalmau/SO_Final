@@ -8,6 +8,8 @@ SRC = maester.c \
 	  console/trade.c \
 	  console/list.c \
 	  network/server.c \
+	  network/network.c \
+	  network/frame.c \
 	  utils.c \
 	  dataStructures.c
 

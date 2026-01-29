@@ -8,6 +8,7 @@
 #define DATA_MAX_SIZE (TRAMA_SIZE - 45)
 #define IP_SIZE 20
 
+
 typedef struct {
     uint8_t type; //para valores alfanumericos mejor uint8 que char 
     char ip_origin[IP_SIZE];

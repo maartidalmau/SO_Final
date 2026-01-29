@@ -4,6 +4,9 @@
 #include "network.h"
 #include "dataStructures.h"
 
+#include <unistd.h>
+#include <sys/socket.h>
+
 // Frame types
 #define ALLIANCE_REQUEST       0x01  // Header + File info
 #define SIGIL_SEND             0x02  // File data (Sigil)

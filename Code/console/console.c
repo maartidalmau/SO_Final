@@ -148,11 +148,21 @@ int commandHandler(char **command, Maester *maester) {
             customWrite(1, CYAN "Usage: EXIT\n" RESET);
         }
     }
+    // PING
+    else if (strcasecmp(tokens[0], "PING") == 0) {
+        if (count == 2) {
+            sendPing(maester, tokens[1]);
+        } else {
+            customWrite(1, YELLOW "Did you mean PING <realm>? Please review syntax.\n" RESET);
+            customWrite(1, CYAN "Usage: PING <realm>\n" RESET);
+        }
+    }
     // HELP
     else if (strcasecmp(tokens[0], "HELP") == 0) {
         customWrite(1, MAGENTA "\n=== Available Commands ===\n" RESET);
         customWrite(1, CYAN "LIST REALMS" RESET " - List all known realms\n");
         customWrite(1, CYAN "LIST PRODUCTS [realm]" RESET " - List products in inventory\n");
+        customWrite(1, CYAN "PING <realm>" RESET " - Test connectivity to a realm\n");
         customWrite(1, CYAN "PLEDGE <realm> <sigil.png>" RESET " - Send a pledge to a realm\n");
         customWrite(1, CYAN "PLEDGE STATUS" RESET " - Check alliance status\n");
         customWrite(1, CYAN "PLEDGE RESPOND <realm> <ACCEPT|REJECT>" RESET " - Respond to a pledge\n");

@@ -64,41 +64,48 @@ int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
         return -1;
     }
     
-    // 1. Apply port +2 rule
-    int targetPort = port + 2;
+    // Use the port directly (no +2 rule)
+    int targetPort = port;
     
-    // 2. Print diagnostic message based on port parity
-    if (targetPort % 2 == 0) {
-        customWrite(1, "Even-port route engaged\n");
-    } else {
-        customWrite(1, "Odd-port route engaged\n");
-    }
+    char *msg;
+    asprintf(&msg, CYAN "Connecting to %s:%d...\n" RESET, ip, targetPort);
+    customWrite(1, msg);
+    free(msg);
     
-    // 3. Create TCP socket
+    // Create TCP socket
     int raven_fd_client = socket(AF_INET, SOCK_STREAM, 0);
     if (raven_fd_client < 0) {
+        customWrite(1, RED "ERROR | Failed to create socket\n" RESET);
         return -1;
     }
     
-    // 4. Configure server address
+    // Configure server address
     struct sockaddr_in serverAddr;
     memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
     
     if (inet_pton(AF_INET, ip, &serverAddr.sin_addr) <= 0) {
+        customWrite(1, RED "ERROR | Invalid IP address\n" RESET);
         close(raven_fd_client);
         return -1;
     }
     
     serverAddr.sin_port = htons(targetPort);
     
-    // 5. Connect to server
+    // Connect to server
     if (connect(raven_fd_client, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        asprintf(&msg, RED "ERROR | Connection refused to %s:%d\n" RESET, ip, targetPort);
+        customWrite(1, msg);
+        free(msg);
         close(raven_fd_client);
         return -1;
     }
     
-    // 6. Return socket descriptor
+    asprintf(&msg, GREEN "Connected successfully to %s:%d\n" RESET, ip, targetPort);
+    customWrite(1, msg);
+    free(msg);
+    
+    // Return socket descriptor
     *raven_fd_out = raven_fd_client;
     return 0;
 }

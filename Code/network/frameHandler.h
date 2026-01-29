@@ -1,9 +1,17 @@
 #ifndef FRAMEHANDLER_H
 #define FRAMEHANDLER_H
 
+#define _GNU_SOURCE
+
+
 #include "frame.h"
 #include "router.h"
 #include "dataStructures.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 
 /**
  * Dispatcher principal que procesa frames según su destino y tipo

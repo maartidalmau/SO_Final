@@ -1,10 +1,7 @@
 #ifndef ROUTER_H
 #define ROUTER_H
 
-// Enable GNU extensions (asprintf and other GNU APIs)
-#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
-#endif
 
 #include "network.h"
 #include "frame.h"

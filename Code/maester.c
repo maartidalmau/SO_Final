@@ -11,6 +11,7 @@
 #include "utils.h"
 #include "console.h"
 #include "server.h"
+#include "client.h"
 
 volatile sig_atomic_t *running = NULL;
 
@@ -74,6 +75,9 @@ int main(int argc, char *argv[]) {
     if (maester->running) {
         consoleLogic(maester);
     }
+
+    //Notify realms of disconnection
+    notifyDisconnect(maester);
 
     //Stop server thread
     //enlloc de shutdown fer un pthread_kill

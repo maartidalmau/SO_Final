@@ -1,12 +1,5 @@
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
-
 #include "frameHandler.h"
-#include <unistd.h>
+
 
 void processFrame(Maester *maester, Frame *frame, int fromSocket) {
     if (!maester || !frame) {
@@ -60,8 +53,8 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
                 
             default:
                 customWrite(1, RED "ERROR | Unknown frame type\n" RESET);
-                
-                // Enviar NACK por tipo desconocido
+
+                //ESTO ESTA MAL HAY QUE HACER EL NACK
                 Frame nackFrame;
                 createFrame(&nackFrame, NACK_ERROR, maester->name, frame->ip_origin, "Unknown frame type");
                 sendFrame(fromSocket, &nackFrame);

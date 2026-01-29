@@ -8,6 +8,7 @@ SRC = maester.c \
 	  console/trade.c \
 	  console/list.c \
 	  network/server.c \
+	  network/client.c \
 	  network/network.c \
 	  network/frame.c \
 	  network/router.c \

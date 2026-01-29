@@ -1,6 +1,5 @@
 #include "frame.h"
-#include <unistd.h>
-#include <sys/socket.h>
+
 
 void createFrame(Frame *frame, uint8_t type, const char *origin, const char *destination, const char *data) {
     if (!frame) return;

@@ -12,7 +12,7 @@
 #include "dataStructures.h"
 #include "list.h"
 #include "trade.h"
-
+#include "client.h"
 
 void consoleLogic(Maester *maester);
 

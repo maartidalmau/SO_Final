@@ -11,6 +11,7 @@ SRC = maester.c \
 	  network/network.c \
 	  network/frame.c \
 	  network/router.c \
+	  network/frameHandler.c \
 	  utils.c \
 	  dataStructures.c
 

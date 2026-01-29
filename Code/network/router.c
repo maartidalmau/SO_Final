@@ -171,11 +171,16 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         
         // Send NACK to sender according to protocol
         //Frame nackFrame;
-        //createNACKFrame(&nackFrame, maester->name);
+        //createFrame(&nackFrame, NACK_ERROR, "", "", maester->name);
         //sendFrame(fromSocket, &nackFrame);
         
         return -1;
     }
+    
+    char *msg;
+    asprintf(&msg, GREEN "Frame forwarded successfully to [%s]\n" RESET, nextHop->name);
+    customWrite(1, msg);
+    free(msg);
     
     // ═══════════════════════════════════════════════════════════
     // STEP 4: Send ACK to sender (hop confirmation)

@@ -1,4 +1,57 @@
 #include "server.h"
+#include "frame.h"
+#include "frameHandler.h"
+
+void *workerThread(void *arg) {
+    WorkerArgs *args = (WorkerArgs *)arg;
+    
+    // Get client IP for logging
+    char clientIP[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(args->clientAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
+    
+    char *msg;
+    asprintf(&msg, CYAN "INFO | Connection from %s:%d\n" RESET, clientIP, ntohs(args->clientAddr.sin_port));
+    customWrite(1, msg);
+    free(msg);
+    
+    // 1. Recibir frame
+    Frame frame;
+    if (receiveFrame(args->clientSocket, &frame) < 0) {
+        customWrite(1, RED "ERROR | Failed to receive frame\n" RESET);
+        close(args->clientSocket);
+        free(args);
+        return NULL;
+    }
+    
+    // 2. Validar checksum
+    if (!validateChecksum(&frame)) {
+        customWrite(1, RED "ERROR | Invalid checksum\n" RESET);
+        
+        //MIRAR COM ENVIAR EL NACK D'ERROR
+        Frame nackFrame;
+        createFrame(&nackFrame, NACK_ERROR, "", "", args->maester->name);
+        sendFrame(args->clientSocket, &nackFrame);
+        
+        close(args->clientSocket);
+        free(args);
+        return NULL;
+    }
+    
+    // 3. Imprimir diagnóstico
+    asprintf(&msg, MAGENTA "Frame received: TYPE=0x%02X FROM=[%s] TO=[%s] DATA_LEN=%d\n" RESET,
+             frame.type, frame.ip_origin, frame.ip_destination, frame.data_lenght);
+    customWrite(1, msg);
+    free(msg);
+    
+    // 4. Procesar frame (dispatcher)
+    processFrame(args->maester, &frame, args->clientSocket);
+    
+    // 5. Cerrar conexión
+    close(args->clientSocket);
+    free(args);
+    
+    return NULL;
+}
 
 void *serverThread(void *arg) {
     //Obtain maester struct
@@ -46,10 +99,38 @@ void *serverThread(void *arg) {
         //Accept client connection
         int clientSocket = accept(maester->serverSocket, (struct sockaddr *)&clientAddr, &clientLen);
 
-        if (clientSocket < 0 && maester->running) {
-            customWrite(1, RED "ERROR | Cannot accept client connection\n" RESET);
+        if (clientSocket < 0) {
+            if (maester->running) {
+                customWrite(1, RED "ERROR | Cannot accept client connection\n" RESET);
+            }
             continue;
         }
+        
+        // Crear estructura de argumentos para el worker
+        WorkerArgs *workerArgs = malloc(sizeof(WorkerArgs));
+        if (!workerArgs) {
+            customWrite(1, RED "ERROR | Cannot allocate memory for worker\n" RESET);
+            close(clientSocket);
+            continue;
+        }
+        
+        workerArgs->clientSocket = clientSocket;
+        workerArgs->maester = maester;
+        workerArgs->clientAddr = clientAddr;
+        
+        // Crear worker thread detached (se limpia solo)
+        pthread_t workerThreadID;
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        
+        if (pthread_create(&workerThreadID, &attr, workerThread, workerArgs) != 0) {
+            customWrite(1, RED "ERROR | Cannot create worker thread\n" RESET);
+            close(clientSocket);
+            free(workerArgs);
+        }
+        
+        pthread_attr_destroy(&attr);
     }
 
     asprintf(&msg, YELLOW "INFO | Shutting down server on %s:%d\n" RESET, maester->ip, maester->port);

@@ -116,6 +116,7 @@ int connectToRealm(Route *route, int *raven_fd_out) {
 }
 
 int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
+    (void)fromSocket; //De moment no utilitzem aquesta funcio
     if (!maester || !frame) {
         return -1;
     }

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #define TRAMA_SIZE 320
 #define DATA_MAX_SIZE (TRAMA_SIZE - 45)

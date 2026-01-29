@@ -1,9 +1,5 @@
 #include "router.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <strings.h>
+
 
 int isDestination(Maester *maester, const char *destination) {
     if (!maester || !destination) {

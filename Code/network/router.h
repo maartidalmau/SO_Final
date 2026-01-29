@@ -1,9 +1,25 @@
 #ifndef ROUTER_H
 #define ROUTER_H
 
+// Enable GNU extensions (asprintf and other GNU APIs)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "network.h"
 #include "frame.h"
 #include "dataStructures.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <strings.h>
+
+
+
 
 /**
  * Verifica si el destino de la trama es este Maester

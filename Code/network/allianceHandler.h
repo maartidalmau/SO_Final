@@ -1,6 +1,8 @@
 #ifndef ALLIANCE_HANDLER_H
 #define ALLIANCE_HANDLER_H
 
+#define _GNU_SOURCE
+
 #include "../dataStructures.h"
 #include "network.h"
 

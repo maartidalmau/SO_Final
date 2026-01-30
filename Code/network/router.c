@@ -5,7 +5,6 @@ int isDestination(Maester *maester, const char *destination) {
     if (!maester || !destination) {
         return 0;
     }
-    
     return (strcasecmp(maester->name, destination) == 0);
 }
 
@@ -64,7 +63,6 @@ int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
         return -1;
     }
     
-    // Use the port directly (no +2 rule)
     int targetPort = port;
     
     char *msg;
@@ -136,10 +134,36 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         // No direct route, try DEFAULT
         nextHop = getDefaultRoute(maester);
     }
-    
     if (!nextHop) {
-        // No DEFAULT either - cannot forward
-        sendNack(fromSocket, maester->name, "NO_ROUTE");
+        // Enviar ERR_UNKNOWN_REALM (0x21) al origen
+        char myIpPort[IP_SIZE];
+        snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
+        
+        char errorData[DATA_MAX_SIZE];
+        snprintf(errorData, DATA_MAX_SIZE, "UNKNOWN_REALM&%s", frame->ip_destination);
+        
+        Frame errorFrame;
+        createFrame(&errorFrame, ERR_UNKNOWN_REALM, myIpPort, frame->ip_origin, errorData);
+        
+        // Intentar enviar l'error al origen (si tenim ruta)
+        Route *originRoute = findRoute(maester, frame->ip_origin);
+        if (!originRoute) {
+            originRoute = getDefaultRoute(maester);
+        }
+        
+        if (originRoute) {
+            int error_fd;
+            if (connectToRealm(originRoute, &error_fd) == 0) {
+                sendFrame(error_fd, &errorFrame);
+                close(error_fd);
+            }
+        }
+        
+        char *msg;
+        asprintf(&msg, RED "Els corbs s'han perdut - Error [UNKNOWN_REALM: %s]\n" RESET, frame->ip_destination);
+        customWrite(1, msg);
+        free(msg);
+        
         return -1;
     }
     
@@ -149,7 +173,6 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         return -1;
     }
     
-    // IMPORTANT: Frame is forwarded as-is, no changes to ORIGIN or DESTINATION
     if (sendFrame(raven_fd_hop, frame) < 0) {
         close(raven_fd_hop);
         sendNack(fromSocket, maester->name, "SEND_FAILED");

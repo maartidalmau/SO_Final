@@ -37,8 +37,6 @@
 
 void createFrame(Frame *frame, uint8_t type, const char *origin, const char *destination, const char *data);
 
-void createNackFrame(Frame *frame, const char *realmName);
-
 int sendNack(int fd, const char *realmName, const char *errorCode);
 
 int validateChecksum(const Frame *frame);

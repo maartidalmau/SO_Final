@@ -1,4 +1,5 @@
 #include "frameHandler.h"
+#include "allianceHandler.h"
 
 
 void processFrame(Maester *maester, Frame *frame, int fromSocket) {
@@ -6,7 +7,6 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
     
-    // ¿Soy el destinatario?
     if (isDestination(maester, frame->ip_destination)) {
         // Soy el destinatario, procesar según tipo
         char *msg;
@@ -16,11 +16,11 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
         
         switch (frame->type) {
             case PING_PONG:
-                handlePingPong(maester, frame, fromSocket);
+                //handlePingPong(maester, frame, fromSocket);
                 break;
                 
             case MAESTER_DISCONNECT:
-                handleDisconnect(maester, frame, fromSocket);
+                handleDisconnect(maester, frame);
                 break;
                 
             case NACK_ERROR:
@@ -70,62 +70,7 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
 // HANDLERS BÁSICOS
 // ═══════════════════════════════════════════════════════════
 
-void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
-    (void)fromSocket; // No usado - respuesta directa al origen
-    
-    char *msg;
-    asprintf(&msg, MAGENTA "PING received from [%s], sending PONG...\n" RESET, frame->ip_origin);
-    customWrite(1, msg);
-    free(msg);
-    
-    // Buscar la ruta al origen (puede ser directa o DEFAULT)
-    Route *originRoute = findRoute(maester, frame->ip_origin);
-    if (!originRoute) {
-        // No hay ruta directa, intentar DEFAULT
-        originRoute = getDefaultRoute(maester);
-    }
-    
-    if (!originRoute) {
-        asprintf(&msg, RED "ERROR | No route to origin [%s] for PONG\n" RESET, frame->ip_origin);
-        customWrite(1, msg);
-        free(msg);
-        return;
-    }
-    
-    // Conectar DIRECTAMENTE al origen (sin pasar por DEFAULT/hops)
-    int pong_fd;
-    if (connectToRealm(originRoute, &pong_fd) < 0) {
-        asprintf(&msg, RED "Els corbs s'han perdut - Error [%s]\n" RESET, frame->ip_origin);
-        customWrite(1, msg);
-        free(msg);
-        return;
-    }
-    
-    // Crear PONG: invertir ORIGIN ↔ DESTINATION
-    Frame pongFrame;
-    memcpy(&pongFrame, frame, sizeof(Frame));
-    strncpy(pongFrame.ip_origin, maester->name, IP_SIZE - 1);
-    pongFrame.ip_origin[IP_SIZE - 1] = '\0';
-    strncpy(pongFrame.ip_destination, frame->ip_origin, IP_SIZE - 1);
-    pongFrame.ip_destination[IP_SIZE - 1] = '\0';
-    
-    // Recalcular checksum con los campos invertidos
-    pongFrame.checksum = calcChecksum(&pongFrame);
-    
-    // Enviar PONG directamente
-    if (sendFrame(pong_fd, &pongFrame) < 0) {
-        customWrite(1, RED "ERROR | Failed to send PONG\n" RESET);
-    } else {
-        asprintf(&msg, GREEN "PONG sent directly to [%s]\n" RESET, frame->ip_origin);
-        customWrite(1, msg);
-        free(msg);
-    }
-    
-    close(pong_fd);
-}
-
-void handleDisconnect(Maester *maester, Frame *frame, int fromSocket) {
-    (void)fromSocket; // No usado
+void handleDisconnect(Maester *maester, Frame *frame) {
     
     char *msg;
     asprintf(&msg, YELLOW "[%s] has disconnected gracefully.\n" RESET, frame->ip_origin);
@@ -136,7 +81,7 @@ void handleDisconnect(Maester *maester, Frame *frame, int fromSocket) {
     pthread_mutex_lock(&maester->alliances_mutex);
     for (int i = 0; i < maester->numAlliances; i++) {
         if (strcmp(maester->alliances[i].name, frame->ip_origin) == 0) {
-            maester->alliances[i].status = 0; // Inactive
+            maester->alliances[i].status = ALLIANCE_NONE;
             asprintf(&msg, YELLOW "Alliance with [%s] marked as inactive\n" RESET, frame->ip_origin);
             customWrite(1, msg);
             free(msg);
@@ -185,15 +130,48 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// HANDLERS DE PRODUCTOS (Stubs por ahora)
+// HANDLERS DE PRODUCTOS
 // ═══════════════════════════════════════════════════════════
-
 void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)frame;
-    (void)fromSocket;
+    char *msg;
     
-    customWrite(1, YELLOW "TODO: handleProductListRequest not yet implemented\n" RESET);
+    const char *originRealm = frame->ip_origin;
+    
+    asprintf(&msg, CYAN "Product list request from [%s]\n" RESET, originRealm);
+    customWrite(1, msg);
+    free(msg);
+    
+    // Verificar si tenim aliança amb aquest regne
+    if (!hasAlliance(maester, originRealm)) {
+        // No tenim aliança - enviar ERR_UNAUTHORIZED (0x25)
+        asprintf(&msg, RED "No alliance with [%s] - sending UNAUTHORIZED\n" RESET, originRealm);
+        customWrite(1, msg);
+        free(msg);
+        
+        char myIpPort[IP_SIZE];
+        snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
+        
+        char errorData[DATA_MAX_SIZE];
+        snprintf(errorData, DATA_MAX_SIZE, "AUTH&%s", originRealm);
+        
+        Frame errorFrame;
+        createFrame(&errorFrame, ERR_UNAUTHORIZED, myIpPort, originRealm, errorData);
+        
+        sendFrame(fromSocket, &errorFrame);
+        return;
+    }
+    
+    // Tenim aliança - per F2 simplement enviem ACK (sense processar realment)
+    asprintf(&msg, GREEN "Alliance verified with [%s] - sending ACK (F2 stub)\n" RESET, originRealm);
+    customWrite(1, msg);
+    free(msg);
+    
+    // Enviar ACK simple (per F2)
+    Frame ackFrame;
+    char ackData[DATA_MAX_SIZE];
+    snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
+    createFrame(&ackFrame, ACK_FILE, "", "", ackData);
+    sendFrame(fromSocket, &ackFrame);
 }
 
 // ═══════════════════════════════════════════════════════════

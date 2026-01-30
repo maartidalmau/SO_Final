@@ -13,6 +13,7 @@
 #include "list.h"
 #include "trade.h"
 #include "client.h"
+#include "frame.h"
 
 void consoleLogic(Maester *maester);
 

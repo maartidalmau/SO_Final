@@ -101,64 +101,79 @@ int readConfigFile(char *filename, Maester *maester) {
 }
 
 
-//SHA DE CANVIAR
 int readProducts(char *filename, Maester *maester) {
     if (!filename || !maester) return 1;
 
     int fd = open(filename, O_RDONLY);
     if (fd < 0) return 1;
 
-    // Obtener tamaño del archivo
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
-        close(fd);
-        return 1;
+    // Inicialitzar inventari buit
+    maester->inventory = NULL;
+    maester->numProducts = 0;
+
+    AuxiliarProduct aux;
+    ssize_t bytesRead;
+
+    // Llegir registre a registre fins a EOF (sense usar fstat)
+    while ((bytesRead = read(fd, &aux, sizeof(AuxiliarProduct))) > 0) {
+        // Verificar lectura completa del registre
+        if (bytesRead != sizeof(AuxiliarProduct)) {
+            // Lectura parcial - fitxer corrupte o incomplet
+            for (int j = 0; j < maester->numProducts; j++) {
+                free(maester->inventory[j].name);
+            }
+            free(maester->inventory);
+            maester->inventory = NULL;
+            maester->numProducts = 0;
+            close(fd);
+            return 1;
+        }
+
+        // Ampliar array de productes
+        Product *tmp = realloc(maester->inventory, (maester->numProducts + 1) * sizeof(Product));
+        if (!tmp) {
+            for (int j = 0; j < maester->numProducts; j++) {
+                free(maester->inventory[j].name);
+            }
+            free(maester->inventory);
+            maester->inventory = NULL;
+            maester->numProducts = 0;
+            close(fd);
+            return 1;
+        }
+        maester->inventory = tmp;
+
+        // Copiar dades a Product dinàmic
+        maester->inventory[maester->numProducts].amount = aux.amount;
+        maester->inventory[maester->numProducts].weight = aux.weight;
+
+        // Reservar memòria per al nom
+        maester->inventory[maester->numProducts].name = malloc(strlen(aux.name) + 1);
+        if (!maester->inventory[maester->numProducts].name) {
+            for (int j = 0; j < maester->numProducts; j++) {
+                free(maester->inventory[j].name);
+            }
+            free(maester->inventory);
+            maester->inventory = NULL;
+            maester->numProducts = 0;
+            close(fd);
+            return 1;
+        }
+        strcpy(maester->inventory[maester->numProducts].name, aux.name);
+
+        maester->numProducts++;
     }
 
-    int numProducts = st.st_size / sizeof(AuxiliarProduct);
-    if (numProducts <= 0) {
+    // Verificar si hi ha hagut error de lectura (bytesRead < 0)
+    if (bytesRead < 0) {
+        for (int j = 0; j < maester->numProducts; j++) {
+            free(maester->inventory[j].name);
+        }
+        free(maester->inventory);
         maester->inventory = NULL;
         maester->numProducts = 0;
         close(fd);
-        return 0;
-    }
-
-    // Reservar memoria para los productos
-    maester->inventory = malloc(numProducts * sizeof(Product));
-    if (!maester->inventory) {
-        close(fd);
         return 1;
-    }
-    maester->numProducts = numProducts;
-
-    AuxiliarProduct aux;
-    for (int i = 0; i < numProducts; i++) {
-        ssize_t r = read(fd, &aux, sizeof(AuxiliarProduct));
-        if (r != sizeof(AuxiliarProduct)) {
-            // Error de lectura: liberar lo reservado
-            for (int j = 0; j < i; j++) free(maester->inventory[j].name);
-            free(maester->inventory);
-            maester->inventory = NULL;
-            maester->numProducts = 0;
-            close(fd);
-            return 1;
-        }
-
-        // Copiar datos a Product dinámico
-        maester->inventory[i].amount = aux.amount;
-        maester->inventory[i].weight = aux.weight;
-
-        // Reservar memoria para el string
-        maester->inventory[i].name = malloc(strlen(aux.name) + 1);
-        if (!maester->inventory[i].name) {
-            for (int j = 0; j < i; j++) free(maester->inventory[j].name);
-            free(maester->inventory);
-            maester->inventory = NULL;
-            maester->numProducts = 0;
-            close(fd);
-            return 1;
-        }
-        strcpy(maester->inventory[i].name, aux.name);
     }
 
     close(fd);

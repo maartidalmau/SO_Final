@@ -1,5 +1,3 @@
-//ports 8095-8099 --> marti
-//ports 8395-8399 --> unai
 #define _GNU_SOURCE
 #include <pthread.h>
 #include <signal.h>
@@ -24,11 +22,17 @@ void rsiCtrlC() {
 int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
     char *msg;
     *maester = malloc(sizeof(Maester));
+    if (!*maester) {
+        customWrite(1, RED "ERROR | Cannot allocate memory for Maester\n" RESET);
+        return 1;
+    }
 
     if (readConfigFile(configFile, *maester)) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, configFile, RESET);
         customWrite(1, msg);
         free(msg);
+        free(*maester);  // Alliberar memòria assignada
+        *maester = NULL;
         return 1;
     }
 
@@ -36,6 +40,8 @@ int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, stockFile, RESET);
         customWrite(1, msg);
         free(msg);
+        destroyMaester(*maester);  // Alliberar tot (config ja carregada)
+        *maester = NULL;
         return 1;
     }
 
@@ -67,28 +73,28 @@ int main(int argc, char *argv[]) {
 
     sigaction(SIGINT, &sa, NULL);
 
-    //Load server socket
+    // Crear thread del servidor
     pthread_t serverThreadID;
-    pthread_create(&serverThreadID, NULL, serverThread, (void *)maester);
+    if (pthread_create(&serverThreadID, NULL, serverThread, (void *)maester) != 0) {
+        customWrite(1, RED "ERROR | Cannot create server thread\n" RESET);
+        destroyMaester(maester);
+        return 1;
+    }
 
-    //Load console
     if (maester->running) {
         consoleLogic(maester);
     }
+    if (maester->serverSocket >= 0) {
+        shutdown(maester->serverSocket, SHUT_RDWR);
+    }
 
-    //Notify realms of disconnection
-    notifyDisconnect(maester);
-
-    //Stop server thread
-    //enlloc de shutdown fer un pthread_kill
-    shutdown(maester->serverSocket, SHUT_RDWR);
+    // Esperar que el thread del servidor acabi (ell tanca el socket)
     pthread_join(serverThreadID, NULL);
 
     asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);
     customWrite(1, msg);
     free(msg);
     
-    //Remove allocated memory
     destroyMaester(maester);
     maester = NULL; //Mirar si fa falta
 

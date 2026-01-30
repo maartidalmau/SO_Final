@@ -45,8 +45,11 @@ int commandHandler(char **command, Maester *maester) {
             customWrite(1, CYAN "Usage: PLEDGE <realm> <sigil.png>\n" RESET);
         } 
         else if (strcasecmp(tokens[1], "STATUS") == 0 && count == 2) {
-            // Mock per Fase 1
             customWrite(1, MAGENTA "--- Alliance Status ---\n" RESET);
+            
+            // Protegir accés a alliances amb mutex
+            pthread_mutex_lock(&maester->alliances_mutex);
+            
             if (maester->numAlliances == 0) {
                 customWrite(1, YELLOW "No alliances established.\n" RESET);
             } else {
@@ -54,9 +57,9 @@ int commandHandler(char **command, Maester *maester) {
                     char *msg;
                     const char *status_str;
                     switch (maester->alliances[i].status) {
-                        case 1: status_str = "PENDING"; break;
-                        case 2: status_str = "ALLIED"; break;
-                        case 3: status_str = "FAILED"; break;
+                        case ALLIANCE_PENDING: status_str = "PENDING"; break;
+                        case ALLIANCE_ACTIVE: status_str = "ALLIED"; break;
+                        case ALLIANCE_FAILED: status_str = "FAILED"; break;
                         default: status_str = "NONE"; break;
                     }
                     asprintf(&msg, "  - %s: %s\n", maester->alliances[i].name, status_str);
@@ -64,21 +67,24 @@ int commandHandler(char **command, Maester *maester) {
                     free(msg);
                 }
             }
+            
+            pthread_mutex_unlock(&maester->alliances_mutex);
         } 
         else if (strcasecmp(tokens[1], "RESPOND") == 0) {
             if (count < 4) {
                 customWrite(1, YELLOW "Did you mean to respond to a pledge? Please review syntax.\n" RESET);
                 customWrite(1, CYAN "Usage: PLEDGE RESPOND <realm> <ACCEPT|REJECT>\n" RESET);
             } else if (count == 4 && (strcasecmp(tokens[3], "ACCEPT") == 0 || strcasecmp(tokens[3], "REJECT") == 0)) {
-                customWrite(1, YELLOW "Command OK\n" RESET);
+                int accept = (strcasecmp(tokens[3], "ACCEPT") == 0) ? PLEDGE_ACCEPT : PLEDGE_REJECT;
+                sendAllianceResponse(maester, tokens[2], accept);
             } else {
                 customWrite(1, RED "Unknown command\n" RESET);
                 customWrite(1, CYAN "Usage: PLEDGE RESPOND <realm> <ACCEPT|REJECT>\n" RESET);
             }
         } 
         else if (count == 3) {
-            // PLEDGE <realm> <sigil> - Mock per Fase 1
-            customWrite(1, YELLOW "Command OK\n" RESET);
+            // PLEDGE <realm> <sigil> - Enviar petició d'aliança
+            sendAllianceRequest(maester, tokens[1], tokens[2]);
         } 
         else {
             customWrite(1, RED "Unknown command\n" RESET);
@@ -151,7 +157,7 @@ int commandHandler(char **command, Maester *maester) {
     // PING
     else if (strcasecmp(tokens[0], "PING") == 0) {
         if (count == 2) {
-            sendPing(maester, tokens[1]);
+            //sendPing(maester, tokens[1]);
         } else {
             customWrite(1, YELLOW "Did you mean PING <realm>? Please review syntax.\n" RESET);
             customWrite(1, CYAN "Usage: PING <realm>\n" RESET);

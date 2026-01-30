@@ -5,16 +5,6 @@
 void *workerThread(void *arg) {
     WorkerArgs *args = (WorkerArgs *)arg;
     
-    // Get client IP for logging
-    char clientIP[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(args->clientAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
-    
-    char *msg;
-    asprintf(&msg, CYAN "INFO | Connection from %s:%d\n" RESET, clientIP, ntohs(args->clientAddr.sin_port));
-    customWrite(1, msg);
-    free(msg);
-    
-    // 1. Recibir frame
     Frame frame;
     if (receiveFrame(args->clientSocket, &frame) < 0) {
         customWrite(1, RED "Els corbs s'han perdut - Error [RECEIVE_FAILED]\n" RESET);
@@ -30,12 +20,6 @@ void *workerThread(void *arg) {
         free(args);
         return NULL;
     }
-    
-    // 3. Imprimir diagnóstico
-    asprintf(&msg, MAGENTA "Frame received: TYPE=0x%02X FROM=[%s] TO=[%s] DATA_LEN=%d\n" RESET,
-             frame.type, frame.ip_origin, frame.ip_destination, frame.data_lenght);
-    customWrite(1, msg);
-    free(msg);
     
     // 4. Procesar frame (dispatcher)
     processFrame(args->maester, &frame, args->clientSocket);
@@ -76,8 +60,8 @@ void *serverThread(void *arg) {
 
     //Bind server socket
     if (bind(maester->serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        customWrite(1, RED "ERROR | Cannot bind socket options\n" RESET);
         close(maester->serverSocket);
-        customWrite(1, RED "ERROR | Cannot bind server socket\n" RESET);
         maester->running = 0;
         return NULL;
     }
@@ -89,11 +73,6 @@ void *serverThread(void *arg) {
         maester->running = 0;
         return NULL;
     }
-
-    char *msg;
-    asprintf(&msg, GREEN "INFO | Server listening on %s:%d\n" RESET, maester->ip, maester->port);
-    customWrite(1, msg);
-    free(msg);
 
     while (maester->running) {
         struct sockaddr_in clientAddr;
@@ -135,10 +114,6 @@ void *serverThread(void *arg) {
         
         pthread_attr_destroy(&attr);
     }
-
-    asprintf(&msg, YELLOW "INFO | Shutting down server on %s:%d\n" RESET, maester->ip, maester->port);
-    customWrite(1, msg);
-    free(msg);
 
     close(maester->serverSocket);
     return NULL;

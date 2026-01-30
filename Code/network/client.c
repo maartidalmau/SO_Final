@@ -21,7 +21,6 @@ int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_
     //Buscar ruta al reino
     Route *route = findRoute(maester, realmName);
     if (!route) {
-        // No hay ruta directa, intentar DEFAULT
         route = getDefaultRoute(maester);
     }
     
@@ -49,114 +48,6 @@ int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_
     free(msg);
     
     return 0;  // Éxito - NO liberar envoy aún (se libera después de la comunicación)
-}
-
-int sendPing(Maester *maester, const char *realmName) {
-    if (!maester || !realmName) {
-        return -1;
-    }
-    
-    // Check if we're trying to ping ourselves
-    if (strcasecmp(maester->name, realmName) == 0) {
-        char *msg;
-        asprintf(&msg, YELLOW "INFO | Cannot ping yourself [%s]\n" RESET, maester->name);
-        customWrite(1, msg);
-        free(msg);
-        return 0;
-    }
-    
-    int raven_fd;
-    char *msg;
-    
-    // 1. Adquirir envoy y conectar
-    if (connectToRealmWithEnvoy(maester, realmName, &raven_fd) < 0) {
-        return -1;
-    }
-    
-    // 2. Crear frame PING_PONG
-    Frame pingFrame;
-    createFrame(&pingFrame, PING_PONG, maester->name, realmName, "PING");
-    
-    // 3. Enviar PING
-    asprintf(&msg, CYAN "Sending PING to [%s]...\n" RESET, realmName);
-    customWrite(1, msg);
-    free(msg);
-    
-    if (sendFrame(raven_fd, &pingFrame) < 0) {
-        customWrite(1, RED "Els corbs s'han perdut - Error [SEND_FAILED]\n" RESET);
-        close(raven_fd);
-        sem_post(&maester->envoys_sem);  // Liberar envoy
-        return -1;
-    }
-    
-    // 4. Recibir PONG
-    asprintf(&msg, CYAN "Waiting for PONG from [%s]...\n" RESET, realmName);
-    customWrite(1, msg);
-    free(msg);
-    
-    Frame pongFrame;
-    if (receiveFrame(raven_fd, &pongFrame) < 0) {
-        customWrite(1, RED "Els corbs s'han perdut - Error [RECEIVE_FAILED]\n" RESET);
-        close(raven_fd);
-        sem_post(&maester->envoys_sem);  // Liberar envoy
-        return -1;
-    }
-    
-    // 5. Validar respuesta
-    if (pongFrame.type == PING_PONG) {
-        asprintf(&msg, GREEN "✓ PONG received from [%s] successfully!\n" RESET, realmName);
-        customWrite(1, msg);
-        free(msg);
-    } else if (pongFrame.type == NACK_ERROR) {
-        // NACK format: ORIGIN and DESTINATION empty, DATA contains realm name
-        asprintf(&msg, RED "Els corbs s'han perdut - NACK from realm [%s]\n" RESET, pongFrame.data);
-        customWrite(1, msg);
-        free(msg);
-    }
-    
-    // 6. Limpiar recursos
-    close(raven_fd);
-    sem_post(&maester->envoys_sem);  // Liberar envoy
-    
-    return 0;
-}
-
-
-void notifyDisconnect(Maester *maester) {
-    if (!maester) {
-        return;
-    }
-    
-    customWrite(1, YELLOW "Notifying realms of disconnection...\n" RESET);
-    
-    // Notificar a todos los reinos con alianza activa
-    pthread_mutex_lock(&maester->alliances_mutex);
-    
-    for (int i = 0; i < maester->numAlliances; i++) {
-        if (maester->alliances[i].status == 1) {  // Solo activos
-            char *msg;
-            asprintf(&msg, YELLOW "Notifying [%s]...\n" RESET, maester->alliances[i].name);
-            customWrite(1, msg);
-            free(msg);
-            
-            // Intentar conectar y enviar DISCONNECT
-            int raven_fd;
-            Route *route = findRoute(maester, maester->alliances[i].name);
-            
-            if (route && connectToRealm(route, &raven_fd) == 0) {
-                Frame disconnectFrame;
-                createFrame(&disconnectFrame, MAESTER_DISCONNECT, maester->name, 
-                           maester->alliances[i].name, "Shutting down");
-                
-                sendFrame(raven_fd, &disconnectFrame);
-                close(raven_fd);
-            }
-        }
-    }
-    
-    pthread_mutex_unlock(&maester->alliances_mutex);
-    
-    customWrite(1, GREEN "Disconnect notifications sent\n" RESET);
 }
 
 // ═══════════════════════════════════════════════════════════

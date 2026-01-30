@@ -17,23 +17,14 @@
 #include "utils.h"
 #include "dataStructures.h"
 
-/**
- * Estructura para pasar argumentos a los worker threads
- */
 typedef struct {
     int clientSocket;
     Maester *maester;
     struct sockaddr_in clientAddr;
 } WorkerArgs;
 
-/**
- * Thread principal del servidor que acepta conexiones
- */
 void *serverThread(void *arg);
 
-/**
- * Worker thread que procesa cada conexión entrante
- */
 void *workerThread(void *arg);
 
 #endif

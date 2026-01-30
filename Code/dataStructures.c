@@ -114,7 +114,6 @@ int readProducts(char *filename, Maester *maester) {
     AuxiliarProduct aux;
     ssize_t bytesRead;
 
-    // Llegir registre a registre fins a EOF (sense usar fstat)
     while ((bytesRead = read(fd, &aux, sizeof(AuxiliarProduct))) > 0) {
         // Verificar lectura completa del registre
         if (bytesRead != sizeof(AuxiliarProduct)) {

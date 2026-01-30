@@ -82,9 +82,6 @@ void handleDisconnect(Maester *maester, Frame *frame) {
     for (int i = 0; i < maester->numAlliances; i++) {
         if (strcmp(maester->alliances[i].name, frame->ip_origin) == 0) {
             maester->alliances[i].status = ALLIANCE_NONE;
-            asprintf(&msg, YELLOW "Alliance with [%s] marked as inactive\n" RESET, frame->ip_origin);
-            customWrite(1, msg);
-            free(msg);
             break;
         }
     }

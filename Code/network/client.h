@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <sys/stat.h>
 
 
 int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_fd_out);

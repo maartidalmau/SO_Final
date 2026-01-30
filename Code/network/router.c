@@ -6,7 +6,7 @@ int isDestination(Maester *maester, const char *destination) {
         return 0;
     }
     
-    return (strcmp(maester->name, destination) == 0);
+    return (strcasecmp(maester->name, destination) == 0);
 }
 
 Route* findRoute(Maester *maester, const char *realmName) {
@@ -75,7 +75,7 @@ int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
     // Create TCP socket
     int raven_fd_client = socket(AF_INET, SOCK_STREAM, 0);
     if (raven_fd_client < 0) {
-        customWrite(1, RED "ERROR | Failed to create socket\n" RESET);
+        customWrite(1, RED "Els corbs s'han perdut - Error [SOCKET_CREATE_FAILED]\n" RESET);
         return -1;
     }
     
@@ -124,9 +124,16 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         return -1;
     }
     
-    // ═══════════════════════════════════════════════════════════
-    // STEP 1: Find route to destination
-    // ═══════════════════════════════════════════════════════════
+    if (strcasecmp(maester->name, frame->ip_origin) == 0) {
+        // We sent this frame originally, and it came back to us
+        char *msg;
+        customWrite(1, RED "Els corbs s'han perdut - Error [LOOP_DETECTED]\n" RESET);
+        free(msg);
+        
+        // Send NACK to origin (ourselves in this case, but could be useful for debugging)
+        // In a real scenario, we might want to notify the application layer
+        return -1;
+    }
     
     Route *nextHop = findRoute(maester, frame->ip_destination);
     
@@ -137,46 +144,20 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
     
     if (!nextHop) {
         // No DEFAULT either - cannot forward
-        customWrite(1, RED "ERROR | No route to destination\n" RESET);
-        
-        // Send NACK to sender according to protocol:
-        // ORIGIN: Empty, DESTINATION: Empty, DATA: RealmName
-        //Frame nackFrame;
-        //createNACKFrame(&nackFrame, maester->name);
-        //sendFrame(fromSocket, &nackFrame);
-        
+        sendNack(fromSocket, maester->name, "NO_ROUTE");
         return -1;
     }
-    
-    // ═══════════════════════════════════════════════════════════
-    // STEP 2: Connect to next hop
-    // ═══════════════════════════════════════════════════════════
     
     int raven_fd_hop;
     if (connectToRealm(nextHop, &raven_fd_hop) < 0) {
-        customWrite(1, RED "ERROR | Cannot connect to next hop\n" RESET);
-        
-        // Send NACK to sender according to protocol
-        //Frame nackFrame;
-        //createNACKFrame(&nackFrame, maester->name);
-        //sendFrame(fromSocket, &nackFrame);
-        
+        sendNack(fromSocket, maester->name, "CONNECT_FAILED");
         return -1;
     }
-    
-    // ═══════════════════════════════════════════════════════════
-    // STEP 3: Forward frame WITHOUT modification
-    // ═══════════════════════════════════════════════════════════
     
     // IMPORTANT: Frame is forwarded as-is, no changes to ORIGIN or DESTINATION
     if (sendFrame(raven_fd_hop, frame) < 0) {
         close(raven_fd_hop);
-        
-        // Send NACK to sender according to protocol
-        //Frame nackFrame;
-        //createFrame(&nackFrame, NACK_ERROR, "", "", maester->name);
-        //sendFrame(fromSocket, &nackFrame);
-        
+        sendNack(fromSocket, maester->name, "SEND_FAILED");
         return -1;
     }
     
@@ -192,10 +173,6 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
     //Frame ackFrame;
     //createACKFrame(&ackFrame, maester->name, frame->ip_origin);
     //sendFrame(fromSocket, &ackFrame);
-    
-    // ═══════════════════════════════════════════════════════════
-    // STEP 5: Close connection and finish
-    // ═══════════════════════════════════════════════════════════
     
     close(raven_fd_hop);
     

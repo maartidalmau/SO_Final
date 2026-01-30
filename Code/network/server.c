@@ -17,7 +17,7 @@ void *workerThread(void *arg) {
     // 1. Recibir frame
     Frame frame;
     if (receiveFrame(args->clientSocket, &frame) < 0) {
-        customWrite(1, RED "ERROR | Failed to receive frame\n" RESET);
+        customWrite(1, RED "Els corbs s'han perdut - Error [RECEIVE_FAILED]\n" RESET);
         close(args->clientSocket);
         free(args);
         return NULL;
@@ -25,13 +25,7 @@ void *workerThread(void *arg) {
     
     // 2. Validar checksum
     if (!validateChecksum(&frame)) {
-        customWrite(1, RED "ERROR | Invalid checksum\n" RESET);
-        
-        //MIRAR COM ENVIAR EL NACK D'ERROR
-        Frame nackFrame;
-        createFrame(&nackFrame, NACK_ERROR, "", "", args->maester->name);
-        sendFrame(args->clientSocket, &nackFrame);
-        
+        sendNack(args->clientSocket, args->maester->name, "CHECKSUM");
         close(args->clientSocket);
         free(args);
         return NULL;

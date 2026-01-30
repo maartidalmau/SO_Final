@@ -12,6 +12,10 @@
 
 #include "utils.h"
 
+#define ALLIANCE_NONE 0
+#define ALLIANCE_PENDING 1
+#define ALLIANCE_ACTIVE 2
+#define ALLIANCE_FAILED 3
 
 #define MAX_COMMAND_LENGTH 512
 

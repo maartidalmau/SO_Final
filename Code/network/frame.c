@@ -38,6 +38,52 @@ void createFrame(Frame *frame, uint8_t type, const char *origin, const char *des
     frame->checksum = calcChecksum(frame);
 }
 
+void createNackFrame(Frame *frame, const char *realmName) {
+    if (!frame) return;
+
+    // Initialize the frame with zeros
+    memset(frame, 0, sizeof(Frame));
+
+    // TYPE: 0x69
+    frame->type = NACK_ERROR;
+
+    // ORIGIN: Empty (already zeroed)
+    // DESTINATION: Empty (already zeroed)
+
+    // DATA: <RealmName> that detected the error
+    if (realmName) {
+        size_t dataLen = strlen(realmName);
+        if (dataLen > DATA_MAX_SIZE) {
+            dataLen = DATA_MAX_SIZE;
+        }
+        memcpy(frame->data, realmName, dataLen);
+        frame->data_lenght = dataLen;
+    } else {
+        frame->data_lenght = 0;
+    }
+
+    // Calculate the checksum
+    frame->checksum = calcChecksum(frame);
+}
+
+int sendNack(int fd, const char *realmName, const char *errorCode) {
+    if (fd < 0 || !realmName) {
+        return -1;
+    }
+    
+    // Log the error
+    char *msg;
+    asprintf(&msg, RED "Els corbs s'han perdut - Error [%s]\n" RESET, errorCode);
+    customWrite(1, msg);
+    free(msg);
+    
+    // Create and send NACK frame
+    Frame nackFrame;
+    createNackFrame(&nackFrame, realmName);
+    
+    return sendFrame(fd, &nackFrame);
+}
+
 int validateChecksum(const Frame *frame) {
     if (!frame) return 0;
 

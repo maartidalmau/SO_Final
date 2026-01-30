@@ -64,6 +64,15 @@ int sendPing(Maester *maester, const char *realmName) {
         return -1;
     }
     
+    // Check if we're trying to ping ourselves
+    if (strcasecmp(maester->name, realmName) == 0) {
+        char *msg;
+        asprintf(&msg, YELLOW "INFO | Cannot ping yourself [%s]\n" RESET, maester->name);
+        customWrite(1, msg);
+        free(msg);
+        return 0;
+    }
+    
     int raven_fd;
     char *msg;
     
@@ -74,7 +83,7 @@ int sendPing(Maester *maester, const char *realmName) {
     
     // 2. Crear frame PING_PONG
     Frame pingFrame;
-    createFrame(&pingFrame, PINoG_PONG, maester->name, realmName, "PING");
+    createFrame(&pingFrame, PING_PONG, maester->name, realmName, "PING");
     
     // 3. Enviar PING
     asprintf(&msg, CYAN "Sending PING to [%s]...\n" RESET, realmName);
@@ -82,7 +91,7 @@ int sendPing(Maester *maester, const char *realmName) {
     free(msg);
     
     if (sendFrame(raven_fd, &pingFrame) < 0) {
-        customWrite(1, RED "ERROR | Failed to send PING\n" RESET);
+        customWrite(1, RED "Els corbs s'han perdut - Error [SEND_FAILED]\n" RESET);
         close(raven_fd);
         sem_post(&maester->envoys_sem);  // Liberar envoy
         return -1;
@@ -95,7 +104,7 @@ int sendPing(Maester *maester, const char *realmName) {
     
     Frame pongFrame;
     if (receiveFrame(raven_fd, &pongFrame) < 0) {
-        customWrite(1, RED "ERROR | Failed to receive PONG\n" RESET);
+        customWrite(1, RED "Els corbs s'han perdut - Error [RECEIVE_FAILED]\n" RESET);
         close(raven_fd);
         sem_post(&maester->envoys_sem);  // Liberar envoy
         return -1;
@@ -107,7 +116,8 @@ int sendPing(Maester *maester, const char *realmName) {
         customWrite(1, msg);
         free(msg);
     } else if (pongFrame.type == NACK_ERROR) {
-        asprintf(&msg, RED "✗ NACK received from [%s]: %s\n" RESET, realmName, pongFrame.data);
+        // NACK format: ORIGIN and DESTINATION empty, DATA contains realm name
+        asprintf(&msg, RED "Els corbs s'han perdut - NACK from realm [%s]\n" RESET, pongFrame.data);
         customWrite(1, msg);
         free(msg);
     } else {
@@ -123,9 +133,6 @@ int sendPing(Maester *maester, const char *realmName) {
     return 0;
 }
 
-// ═══════════════════════════════════════════════════════════
-// DISCONNECT: Notificar desconexión ordenada
-// ═══════════════════════════════════════════════════════════
 
 void notifyDisconnect(Maester *maester) {
     if (!maester) {

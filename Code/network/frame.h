@@ -35,22 +35,14 @@
 
 void createFrame(Frame *frame, uint8_t type, const char *origin, const char *destination, const char *data);
 
+void createNackFrame(Frame *frame, const char *realmName);
+
+int sendNack(int fd, const char *realmName, const char *errorCode);
+
 int validateChecksum(const Frame *frame);
 
-/**
- * Envía una trama serializada a través de un socket
- * @param raven_fd_client Descriptor del socket
- * @param frame Trama a enviar
- * @return 0 si éxito, -1 si error
- */
 int sendFrame(int raven_fd_client, Frame *frame);
 
-/**
- * Recibe una trama desde un socket y la deserializa
- * @param raven_fd_client Descriptor del socket
- * @param frame Estructura donde se almacenará la trama recibida
- * @return 0 si éxito, -1 si error
- */
 int receiveFrame(int raven_fd_client, Frame *frame);
 
 #endif // FRAME_H

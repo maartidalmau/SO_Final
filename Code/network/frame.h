@@ -1,6 +1,8 @@
 #ifndef FRAME_H
 #define FRAME_H
 
+#define _GNU_SOURCE
+
 #include "network.h"
 #include "dataStructures.h"
 

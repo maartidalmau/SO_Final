@@ -2,8 +2,8 @@ Dragonstone
 /dragonstone_stock
 3
 192.168.1.3
-8097
+8098
 --- ROUTES ---
-DEFAULT 192.168.1.5 8096
-KingsLanding 192.168.1.5 8096
+DEFAULT 192.168.1.5 8099
+KingsLanding 192.168.1.5 8099
 Dragonstone 192.168.1.3 8095

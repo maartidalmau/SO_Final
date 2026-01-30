@@ -1,9 +1,5 @@
 #include "client.h"
 
-// ═══════════════════════════════════════════════════════════
-// FUNCIÓN BASE: Conectar con gestión de envoys
-// ═══════════════════════════════════════════════════════════
-
 int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_fd_out) {
     if (!maester || !realmName || !raven_fd_out) {
         return -1;
@@ -11,7 +7,7 @@ int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_
     
     char *msg;
     
-    // PASO 1: Adquirir envoy (bloquea si todos ocupados)
+    //Adquirir envoy (bloquea si todos ocupados)
     asprintf(&msg, CYAN "Waiting for available envoy...\n" RESET);
     customWrite(1, msg);
     free(msg);
@@ -22,7 +18,7 @@ int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_
     customWrite(1, msg);
     free(msg);
     
-    // PASO 2: Buscar ruta al reino
+    //Buscar ruta al reino
     Route *route = findRoute(maester, realmName);
     if (!route) {
         // No hay ruta directa, intentar DEFAULT
@@ -38,7 +34,7 @@ int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_
         return -1;
     }
     
-    // PASO 3: Conectar al reino
+    // Conectar al reino
     if (connectToRealm(route, raven_fd_out) < 0) {
         asprintf(&msg, RED "ERROR | Cannot connect to realm [%s]\n" RESET, realmName);
         customWrite(1, msg);
@@ -54,10 +50,6 @@ int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_
     
     return 0;  // Éxito - NO liberar envoy aún (se libera después de la comunicación)
 }
-
-// ═══════════════════════════════════════════════════════════
-// PING: Función simple para verificar conectividad
-// ═══════════════════════════════════════════════════════════
 
 int sendPing(Maester *maester, const char *realmName) {
     if (!maester || !realmName) {
@@ -118,10 +110,6 @@ int sendPing(Maester *maester, const char *realmName) {
     } else if (pongFrame.type == NACK_ERROR) {
         // NACK format: ORIGIN and DESTINATION empty, DATA contains realm name
         asprintf(&msg, RED "Els corbs s'han perdut - NACK from realm [%s]\n" RESET, pongFrame.data);
-        customWrite(1, msg);
-        free(msg);
-    } else {
-        asprintf(&msg, YELLOW "? Unexpected response type: 0x%02X\n" RESET, pongFrame.type);
         customWrite(1, msg);
         free(msg);
     }

@@ -78,8 +78,13 @@ void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
     customWrite(1, msg);
     free(msg);
     
-    // Buscar la ruta al origen (respuesta directa sin hops)
+    // Buscar la ruta al origen (puede ser directa o DEFAULT)
     Route *originRoute = findRoute(maester, frame->ip_origin);
+    if (!originRoute) {
+        // No hay ruta directa, intentar DEFAULT
+        originRoute = getDefaultRoute(maester);
+    }
+    
     if (!originRoute) {
         asprintf(&msg, RED "ERROR | No route to origin [%s] for PONG\n" RESET, frame->ip_origin);
         customWrite(1, msg);
@@ -146,7 +151,6 @@ void handleNack(Maester *maester, Frame *frame, int fromSocket) {
     (void)fromSocket;
     
     char *msg;
-    // NACK format: ORIGIN and DESTINATION are empty, DATA contains realm name that detected error
     asprintf(&msg, RED "Els corbs s'han perdut - NACK from realm [%s]\n" RESET, frame->data);
     customWrite(1, msg);
     free(msg);

@@ -65,6 +65,15 @@ void *serverThread(void *arg) {
         return NULL;
     }
 
+    // Permitir reutilizar la dirección inmediatamente
+    int opt = 1;
+    if (setsockopt(maester->serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        customWrite(1, RED "ERROR | Cannot set socket options\n" RESET);
+        close(maester->serverSocket);
+        maester->running = 0;
+        return NULL;
+    }
+
     //Bind server socket
     if (bind(maester->serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         close(maester->serverSocket);

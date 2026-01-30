@@ -126,12 +126,7 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
     
     if (strcasecmp(maester->name, frame->ip_origin) == 0) {
         // We sent this frame originally, and it came back to us
-        char *msg;
-        customWrite(1, RED "Els corbs s'han perdut - Error [LOOP_DETECTED]\n" RESET);
-        free(msg);
-        
-        // Send NACK to origin (ourselves in this case, but could be useful for debugging)
-        // In a real scenario, we might want to notify the application layer
+        customWrite(1, RED "Els corbs s'han perdut - Error [LOOP_DETECTED]\n" RESET);        
         return -1;
     }
     

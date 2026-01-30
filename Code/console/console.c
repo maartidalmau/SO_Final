@@ -57,7 +57,7 @@ int commandHandler(char **command, Maester *maester) {
                     char *msg;
                     const char *status_str;
                     switch (maester->alliances[i].status) {
-                        case ALLIANCE_PENDING: status_str = "PENDING"; break;
+                        case ALLIANCE_PENDING: status_str = "PENDING (waiting response)"; break;
                         case ALLIANCE_ACTIVE: status_str = "ALLIED"; break;
                         case ALLIANCE_FAILED: status_str = "FAILED"; break;
                         default: status_str = "NONE"; break;
@@ -196,6 +196,7 @@ void consoleLogic(Maester *maester) {
     free(msg);
 
     while (!exitStatus && maester->running) {
+        
         customWrite(1, GREEN "$ " RESET);
         customRead(0, &command, '\n');
         

@@ -71,21 +71,43 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
 // ═══════════════════════════════════════════════════════════
 
 void handleDisconnect(Maester *maester, Frame *frame) {
-    
     char *msg;
-    asprintf(&msg, YELLOW "[%s] has disconnected gracefully.\n" RESET, frame->ip_origin);
+    
+    // El nom del regne que es desconnecta està al DATA
+    const char *disconnectedRealm = frame->data;
+    
+    // Si DATA està buit, intentem buscar per IP:Port
+    if (strlen(disconnectedRealm) == 0) {
+        disconnectedRealm = frame->ip_origin;
+    }
+    
+    asprintf(&msg, YELLOW "\n[%s] has disconnected gracefully.\n" RESET, disconnectedRealm);
     customWrite(1, msg);
     free(msg);
     
-    // Actualizar estado de alianzas si existe
+    // Actualizar estado de alianzas - buscar per nom o per IP:Port
     pthread_mutex_lock(&maester->alliances_mutex);
     for (int i = 0; i < maester->numAlliances; i++) {
-        if (strcmp(maester->alliances[i].name, frame->ip_origin) == 0) {
+        // Buscar per nom del regne
+        if (strcasecmp(maester->alliances[i].name, disconnectedRealm) == 0) {
             maester->alliances[i].status = ALLIANCE_NONE;
             break;
         }
+        // Buscar per IP:Port (fallback)
+        if (maester->alliances[i].ip != NULL) {
+            char allyIpPort[64];
+            snprintf(allyIpPort, sizeof(allyIpPort), "%s:%d", 
+                     maester->alliances[i].ip, maester->alliances[i].port);
+            if (strcmp(allyIpPort, frame->ip_origin) == 0) {
+                maester->alliances[i].status = ALLIANCE_NONE;
+                break;
+            }
+        }
     }
     pthread_mutex_unlock(&maester->alliances_mutex);
+    
+    // Mostrar prompt de nou
+    customWrite(1, GREEN "$ " RESET);
 }
 
 void handleNack(Maester *maester, Frame *frame, int fromSocket) {
@@ -103,11 +125,63 @@ void handleNack(Maester *maester, Frame *frame, int fromSocket) {
 // ═══════════════════════════════════════════════════════════
 
 void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)frame;
-    (void)fromSocket;
+    char *msg;
+    (void)fromSocket;  // Per F2 no enviem ACK aquí
     
-    customWrite(1, YELLOW "TODO: handleAllianceRequest not yet implemented\n" RESET);
+    // 1. Parsejar DATA: <RealmName>&<SigilName>&<FileSize>&<MD5SUM>
+    char requesterName[64];
+    char sigilName[64];
+    int fileSize = 0;
+    char md5sum[64];
+    
+    // Mínim necessitem RealmName i SigilName
+    if (sscanf(frame->data, "%63[^&]&%63[^&]&%d&%63s", 
+               requesterName, sigilName, &fileSize, md5sum) < 2) {
+        asprintf(&msg, RED "ERROR | Invalid alliance request format\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        sendNack(fromSocket, maester->name, "INVALID_FORMAT");
+        return;
+    }
+    
+    // 2. Parsejar ORIGIN per obtenir IP:Port del sol·licitant
+    char requesterIp[32];
+    int requesterPort = 0;
+    
+    if (sscanf(frame->ip_origin, "%31[^:]:%d", requesterIp, &requesterPort) != 2) {
+        asprintf(&msg, RED "ERROR | Invalid origin format in alliance request\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        sendNack(fromSocket, maester->name, "INVALID_ORIGIN");
+        return;
+    }
+    
+    // 3. Verificar si ja tenim aliança amb aquest regne
+    Alliance *existing = findAlliance(maester, requesterName);
+    if (existing) {
+        if (existing->status == ALLIANCE_ACTIVE) {
+            asprintf(&msg, YELLOW "Already allied with [%s]\n" RESET, requesterName);
+            customWrite(1, msg);
+            free(msg);
+            return;
+        }
+        // Si ja tenim PENDING nostre, ara rebem la seva petició - actualitzem IP
+    }
+    
+    // 4. Crear/actualitzar aliança com PENDING amb la IP del sol·licitant
+    // Guardem IP:Port per poder respondre directament després (PLEDGE RESPOND)
+    addOrUpdateAlliance(maester, requesterName, requesterIp, requesterPort, ALLIANCE_PENDING);
+    
+    // 5. Mostrar missatge a l'usuari
+    asprintf(&msg, MAGENTA "\n>>> Alliance request received from %s.\n" RESET, requesterName);
+    customWrite(1, msg);
+    free(msg);
+    
+    // Mostrar prompt de nou
+    customWrite(1, GREEN "$ " RESET);
+    
+    // Per F2: no enviem ACK aquí (no hi ha transferència de sigil)
+    // L'usuari ha de fer PLEDGE RESPOND <realm> ACCEPT/REJECT
 }
 
 void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
@@ -119,11 +193,88 @@ void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
 }
 
 void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)frame;
-    (void)fromSocket;
+    char *msg;
     
-    customWrite(1, YELLOW "TODO: handleAllianceResponse not yet implemented\n" RESET);
+    // Parsejar DATA: ACCEPT&<RealmName> o REJECT&<RealmName>
+    char responseType[16];
+    char responderName[64];
+    
+    if (sscanf(frame->data, "%15[^&]&%63s", responseType, responderName) != 2) {
+        asprintf(&msg, RED "ERROR | Invalid alliance response format\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        sendNack(fromSocket, maester->name, "INVALID_FORMAT");
+        return;
+    }
+    
+    // Parsejar ORIGIN per obtenir IP:Port de l'aliat
+    char responderIp[32];
+    int responderPort = 0;
+    
+    if (sscanf(frame->ip_origin, "%31[^:]:%d", responderIp, &responderPort) != 2) {
+        responderIp[0] = '\0';
+        responderPort = 0;
+    }
+    
+    // Buscar l'aliança PENDING per comprovar el timeout
+    Alliance *alliance = findAlliance(maester, responderName);
+    
+    if (!alliance || alliance->status != ALLIANCE_PENDING) {
+        asprintf(&msg, YELLOW "Received response from [%s] but no pending request found\n" RESET, responderName);
+        customWrite(1, msg);
+        free(msg);
+        return;
+    }
+    
+    // COMPROVAR TIMEOUT: si han passat més de 120 segons
+    time_t now = time(NULL);
+    double elapsed = difftime(now, alliance->requestTime);
+    
+    if (elapsed > ALLIANCE_TIMEOUT_SECONDS) {
+        // TIMEOUT - enviar NACK i marcar com FAILED
+        asprintf(&msg, RED "\n>>> Pledge to %s has failed (TIMEOUT - response arrived after %.0f seconds).\n" RESET, 
+                 responderName, elapsed);
+        customWrite(1, msg);
+        free(msg);
+        
+        // Actualitzar estat
+        addOrUpdateAlliance(maester, responderName, NULL, 0, ALLIANCE_FAILED);
+        
+        // Enviar NACK (0x69) al que ens ha respost
+        Frame nackFrame;
+        createFrame(&nackFrame, NACK_ERROR, "", "", maester->name);
+        sendFrame(fromSocket, &nackFrame);
+        
+        customWrite(1, GREEN "$ " RESET);
+        return;
+    }
+    
+    // RESPOSTA A TEMPS - Enviar ACK (0x31) confirmant recepció
+    Frame ackFrame;
+    char ackData[DATA_MAX_SIZE];
+    snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
+    createFrame(&ackFrame, ACK_FILE, "", "", ackData);
+    sendFrame(fromSocket, &ackFrame);
+    
+    // Actualitzar estat de l'aliança segons resposta
+    if (strcasecmp(responseType, "ACCEPT") == 0) {
+        // Aliança acceptada! Guardar IP:Port per connexió directa futura
+        addOrUpdateAlliance(maester, responderName, responderIp, responderPort, ALLIANCE_ACTIVE);
+        
+        asprintf(&msg, GREEN "\n>>> Alliance with %s forged successfully!\n" RESET, responderName);
+        customWrite(1, msg);
+        free(msg);
+    } else {
+        // Aliança rebutjada
+        addOrUpdateAlliance(maester, responderName, NULL, 0, ALLIANCE_FAILED);
+        
+        asprintf(&msg, YELLOW "\n>>> Alliance with %s was rejected.\n" RESET, responderName);
+        customWrite(1, msg);
+        free(msg);
+    }
+    
+    // Mostrar prompt de nou
+    customWrite(1, GREEN "$ " RESET);
 }
 
 // ═══════════════════════════════════════════════════════════

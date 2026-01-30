@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <time.h>
 
 #include "utils.h"
 
@@ -14,6 +15,8 @@
 #define ALLIANCE_PENDING 1
 #define ALLIANCE_ACTIVE 2
 #define ALLIANCE_FAILED 3
+
+#define ALLIANCE_TIMEOUT_SECONDS 120  // 2 minuts
 
 #define MAX_COMMAND_LENGTH 512
 
@@ -39,7 +42,8 @@ typedef struct {
     char *name;
     char *ip;
     int port;
-    int status; // 0: inactive, 1: active
+    int status;
+    time_t requestTime;  // Timestamp de quan es va enviar/rebre la petició
 } Alliance;
 
 typedef struct {

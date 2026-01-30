@@ -14,6 +14,7 @@
 #include "trade.h"
 #include "client.h"
 #include "frame.h"
+#include "allianceHandler.h"
 
 void consoleLogic(Maester *maester);
 

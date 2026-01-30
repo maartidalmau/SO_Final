@@ -6,14 +6,13 @@
 #include "frame.h"
 #include "router.h"
 #include "dataStructures.h"
+#include "allianceHandler.h"
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 
-
-int connectToRealmWithEnvoy(Maester *maester, const char *realmName, int *raven_fd_out);
-
-int sendPing(Maester *maester, const char *realmName);
 
 void notifyDisconnect(Maester *maester);
 

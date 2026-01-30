@@ -122,7 +122,12 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         return -1;
     }
     
-    if (strcasecmp(maester->name, frame->ip_origin) == 0) {
+    // Comprovar si la trama ens l'hem originat nosaltres (LOOP)
+    // ip_origin conté IP:Port, cal comparar correctament
+    char myIpPort[IP_SIZE];
+    snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
+    
+    if (strcmp(myIpPort, frame->ip_origin) == 0) {
         // We sent this frame originally, and it came back to us
         customWrite(1, RED "Els corbs s'han perdut - Error [LOOP_DETECTED]\n" RESET);        
         return -1;

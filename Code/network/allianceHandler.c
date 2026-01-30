@@ -67,20 +67,12 @@ void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int
                 maester->alliances[i].port = port;
             }
             
-            pthread_mutex_unlock(&maester->alliances_mutex);
-            
-            char *msg;
-            const char *status_str;
-            switch (status) {
-                case ALLIANCE_NONE: status_str = "NONE"; break;
-                case ALLIANCE_PENDING: status_str = "PENDING"; break;
-                case ALLIANCE_ACTIVE: status_str = "ACTIVE"; break;
-                case ALLIANCE_FAILED: status_str = "FAILED"; break;
-                default: status_str = "UNKNOWN"; break;
+            // Actualitzar timestamp si és una nova petició PENDING
+            if (status == ALLIANCE_PENDING) {
+                maester->alliances[i].requestTime = time(NULL);
             }
-            asprintf(&msg, GREEN "Alliance with [%s] updated to %s\n" RESET, name, status_str);
-            customWrite(1, msg);
-            free(msg);
+            
+            pthread_mutex_unlock(&maester->alliances_mutex);
             
             return;
         }
@@ -101,21 +93,9 @@ void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int
     maester->alliances[maester->numAlliances].ip = ip ? strdup(ip) : NULL;
     maester->alliances[maester->numAlliances].port = port;
     maester->alliances[maester->numAlliances].status = status;
+    maester->alliances[maester->numAlliances].requestTime = time(NULL);  // Timestamp actual
     
     maester->numAlliances++;
     
     pthread_mutex_unlock(&maester->alliances_mutex);
-    
-    char *msg;
-    const char *status_str;
-    switch (status) {
-        case ALLIANCE_NONE: status_str = "NONE"; break;
-        case ALLIANCE_PENDING: status_str = "PENDING"; break;
-        case ALLIANCE_ACTIVE: status_str = "ACTIVE"; break;
-        case ALLIANCE_FAILED: status_str = "FAILED"; break;
-        default: status_str = "UNKNOWN"; break;
-    }
-    asprintf(&msg, GREEN "New alliance with [%s] created with status %s\n" RESET, name, status_str);
-    customWrite(1, msg);
-    free(msg);
 }

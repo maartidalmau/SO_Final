@@ -84,6 +84,9 @@ int main(int argc, char *argv[]) {
     if (maester->running) {
         consoleLogic(maester);
     }
+    
+    notifyDisconnect(maester);
+    
     if (maester->serverSocket >= 0) {
         shutdown(maester->serverSocket, SHUT_RDWR);
     }

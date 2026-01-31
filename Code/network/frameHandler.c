@@ -120,9 +120,6 @@ void handleNack(Maester *maester, Frame *frame, int fromSocket) {
     free(msg);
 }
 
-// ═══════════════════════════════════════════════════════════
-// HANDLERS DE ALIANZA (Stubs por ahora)
-// ═══════════════════════════════════════════════════════════
 
 void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
@@ -156,10 +153,10 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
     
-    // 3. Verificar si ja tenim aliança amb aquest regne
-    Alliance *existing = findAlliance(maester, requesterName);
-    if (existing) {
-        if (existing->status == ALLIANCE_ACTIVE) {
+    // 3. Verificar si ja tenim aliança amb aquest regne (thread-safe)
+    int existingStatus = ALLIANCE_NONE;
+    if (getAllianceInfo(maester, requesterName, NULL, NULL, &existingStatus, NULL)) {
+        if (existingStatus == ALLIANCE_ACTIVE) {
             asprintf(&msg, YELLOW "Already allied with [%s]\n" RESET, requesterName);
             customWrite(1, msg);
             free(msg);
@@ -216,10 +213,12 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
         responderPort = 0;
     }
     
-    // Buscar l'aliança PENDING per comprovar el timeout
-    Alliance *alliance = findAlliance(maester, responderName);
+    // Buscar l'aliança PENDING per comprovar el timeout (thread-safe)
+    int allianceStatus = ALLIANCE_NONE;
+    time_t requestTime = 0;
     
-    if (!alliance || alliance->status != ALLIANCE_PENDING) {
+    if (!getAllianceInfo(maester, responderName, NULL, NULL, &allianceStatus, &requestTime) ||
+        allianceStatus != ALLIANCE_PENDING) {
         asprintf(&msg, YELLOW "Received response from [%s] but no pending request found\n" RESET, responderName);
         customWrite(1, msg);
         free(msg);
@@ -228,7 +227,7 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
     
     // COMPROVAR TIMEOUT: si han passat més de 120 segons
     time_t now = time(NULL);
-    double elapsed = difftime(now, alliance->requestTime);
+    double elapsed = difftime(now, requestTime);
     
     if (elapsed > ALLIANCE_TIMEOUT_SECONDS) {
         // TIMEOUT - enviar NACK i marcar com FAILED
@@ -283,16 +282,18 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
 void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
     
-    const char *originRealm = frame->ip_origin;
+    // El nombre del reino solicitante viene en DATA (enviado por sendProductListRequest)
+    // frame->ip_origin contiene IP:Port, no el nombre
+    const char *requesterName = frame->data;
     
-    asprintf(&msg, CYAN "Product list request from [%s]\n" RESET, originRealm);
+    asprintf(&msg, CYAN "Product list request from [%s]\n" RESET, requesterName);
     customWrite(1, msg);
     free(msg);
     
-    // Verificar si tenim aliança amb aquest regne
-    if (!hasAlliance(maester, originRealm)) {
+    // Verificar si tenim aliança amb aquest regne (por nombre, no por IP)
+    if (!hasAlliance(maester, requesterName)) {
         // No tenim aliança - enviar ERR_UNAUTHORIZED (0x25)
-        asprintf(&msg, RED "No alliance with [%s] - sending UNAUTHORIZED\n" RESET, originRealm);
+        asprintf(&msg, RED "No alliance with [%s] - sending UNAUTHORIZED\n" RESET, requesterName);
         customWrite(1, msg);
         free(msg);
         
@@ -300,17 +301,17 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
         
         char errorData[DATA_MAX_SIZE];
-        snprintf(errorData, DATA_MAX_SIZE, "AUTH&%s", originRealm);
+        snprintf(errorData, DATA_MAX_SIZE, "AUTH&%.200s", requesterName);
         
         Frame errorFrame;
-        createFrame(&errorFrame, ERR_UNAUTHORIZED, myIpPort, originRealm, errorData);
+        createFrame(&errorFrame, ERR_UNAUTHORIZED, myIpPort, frame->ip_origin, errorData);
         
         sendFrame(fromSocket, &errorFrame);
         return;
     }
     
     // Tenim aliança - per F2 simplement enviem ACK (sense processar realment)
-    asprintf(&msg, GREEN "Alliance verified with [%s] - sending ACK (F2 stub)\n" RESET, originRealm);
+    asprintf(&msg, GREEN "Alliance verified with [%s] - sending ACK (F2 stub)\n" RESET, requesterName);
     customWrite(1, msg);
     free(msg);
     

@@ -68,8 +68,12 @@ int readConfigFile(char *filename, Maester *maester) {
     int eof = customRead(fd, &aux, ' ');
 
     while (eof) {
-        //Realloc
         Route* t = realloc(maester->routes, sizeof(Route)*(maester->numRoutes+1));
+        if (!t) {
+            safeFree((void**)&aux);
+            close(fd);
+            return 1;
+        }
         maester->routes = t;
 
         //Init route
@@ -78,6 +82,11 @@ int readConfigFile(char *filename, Maester *maester) {
         //Remove & if exists 
         removeChar(aux, '&');
         maester->routes[maester->numRoutes].name = strdup(aux);
+        if (!maester->routes[maester->numRoutes].name) {
+            safeFree((void**)&aux);
+            close(fd);
+            return 1;
+        }
         safeFree((void**)&aux);
 
         //Read ip var

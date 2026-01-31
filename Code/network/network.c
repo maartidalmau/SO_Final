@@ -17,7 +17,7 @@ uint16_t calcChecksum(const Frame *frame) {
     }
     
     // Sumar DATA_LENGTH (2 bytes en network byte order)
-    uint16_t data_length_net = htons(frame->data_lenght);
+    uint16_t data_length_net = htons(frame->data_length);
     uint8_t *data_length_bytes = (uint8_t *)&data_length_net;
     suma += data_length_bytes[0] + data_length_bytes[1];
     
@@ -50,7 +50,7 @@ void serializar_trama(const Frame *frame, uint8_t *buffer) {
     offset += IP_SIZE;
     
     // DATA_LENGTH (2 bytes en network byte order)
-    uint16_t data_length_net = htons(frame->data_lenght);
+    uint16_t data_length_net = htons(frame->data_length);
     memcpy(buffer + offset, &data_length_net, sizeof(uint16_t));
     offset += sizeof(uint16_t);
     
@@ -82,7 +82,7 @@ void deserializar_trama(const uint8_t *buffer, Frame *frame) {
     // DATA_LENGTH (2 bytes, convertir de network byte order)
     uint16_t data_length_net;
     memcpy(&data_length_net, buffer + offset, sizeof(uint16_t));
-    frame->data_lenght = ntohs(data_length_net);
+    frame->data_length = ntohs(data_length_net);
     offset += sizeof(uint16_t);
     
     // DATA (DATA_MAX_SIZE bytes)

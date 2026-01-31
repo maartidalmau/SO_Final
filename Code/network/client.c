@@ -7,16 +7,16 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     }
     char *msg;
     
-    // 1. Verificar que no tenim ja aliança activa amb aquest regne
-    Alliance *existing = findAlliance(maester, realmName);
-    if (existing) {
-        if (existing->status == ALLIANCE_ACTIVE) {
+    // 1. Verificar que no tenim ja aliança activa amb aquest regne (thread-safe)
+    int existingStatus = ALLIANCE_NONE;
+    if (getAllianceInfo(maester, realmName, NULL, NULL, &existingStatus, NULL)) {
+        if (existingStatus == ALLIANCE_ACTIVE) {
             asprintf(&msg, YELLOW "Already allied with [%s]\n" RESET, realmName);
             customWrite(1, msg);
             free(msg);
             return 0;
         }
-        if (existing->status == ALLIANCE_PENDING) {
+        if (existingStatus == ALLIANCE_PENDING) {
             asprintf(&msg, YELLOW "Alliance request to [%s] already pending\n" RESET, realmName);
             customWrite(1, msg);
             free(msg);
@@ -24,14 +24,24 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
         }
     }
     
-    // 2. Buscar ruta al regne (directa o via DEFAULT)
-    Route *route = findRoute(maester, realmName);
+    // 2. Buscar ruta al regne (directa o via DEFAULT) - thread-safe
+    char *routeIp = NULL;
+    int routePort = 0;
     
-    if (!route || strcasecmp(route->ip, "*.*.*.*") == 0) {
-        route = getDefaultRoute(maester);
+    if (!getRouteInfo(maester, realmName, &routeIp, &routePort) || 
+        (routeIp && strcasecmp(routeIp, "*.*.*.*") == 0)) {
+        // No direct route or unknown IP, try DEFAULT
+        if (routeIp) free(routeIp);
+        routeIp = NULL;
+        if (!getRouteInfo(maester, NULL, &routeIp, &routePort)) {
+            asprintf(&msg, RED "ERROR | No route to realm [%s]\n" RESET, realmName);
+            customWrite(1, msg);
+            free(msg);
+            return -1;
+        }
     }
     
-    if (!route) {
+    if (!routeIp) {
         asprintf(&msg, RED "ERROR | No route to realm [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
@@ -40,12 +50,15 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     
     // 3. Connectar al següent hop
     int raven_fd = -1;
-    if (connectToRealm(route, &raven_fd) < 0) {
+    if (connectToRealmByRoute(routeIp, routePort, &raven_fd) < 0) {
         asprintf(&msg, RED "ERROR | Cannot connect to route for [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
+        free(routeIp);
         return -1;
     }
+    
+    free(routeIp);  // Ya no necesitamos la IP
     
     // 4. Crear la trama ALLIANCE_REQUEST (TYPE 0x01)
     // Format DATA: <RealmName>&<SigilName>&<FileSize>&<MD5SUM>
@@ -94,35 +107,36 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
     
     char *msg;
     
-    // 1. Buscar l'aliança PENDING amb aquest regne
-    Alliance *alliance = findAlliance(maester, realmName);
+    // 1. Buscar l'aliança PENDING amb aquest regne (thread-safe)
+    char *savedIp = NULL;
+    int savedPort = 0;
+    int allianceStatus = ALLIANCE_NONE;
     
-    if (!alliance || alliance->status != ALLIANCE_PENDING) {
+    if (!getAllianceInfo(maester, realmName, &savedIp, &savedPort, &allianceStatus, NULL)) {
         asprintf(&msg, RED "ERROR | No pending alliance request from [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
         return -1;
     }
     
+    if (allianceStatus != ALLIANCE_PENDING) {
+        asprintf(&msg, RED "ERROR | No pending alliance request from [%s]\n" RESET, realmName);
+        customWrite(1, msg);
+        free(msg);
+        if (savedIp) free(savedIp);
+        return -1;
+    }
+    
     // 2. Verificar que tenim IP (vol dir que hem REBUT la petició, no enviat)
-    if (!alliance->ip || alliance->port <= 0) {
+    if (!savedIp || savedPort <= 0) {
         asprintf(&msg, RED "ERROR | You sent this request, wait for their response\n" RESET);
         customWrite(1, msg);
         free(msg);
+        if (savedIp) free(savedIp);
         return -1;
     }
     
-    // 3. IMPORTANT: Guardar còpies de IP i port ABANS de qualsevol operació
-    //    perquè el punter alliance pot quedar invàlid després de addOrUpdateAlliance
-    char *savedIp = strdup(alliance->ip);
-    int savedPort = alliance->port;
-    
-    if (!savedIp) {
-        customWrite(1, RED "ERROR | Memory allocation failed\n" RESET);
-        return -1;
-    }
-    
-    // 4. Connectar directament a la IP:Port del sol·licitant
+    // 3. Connectar directament a la IP:Port del sol·licitant
     int raven_fd = -1;
     if (connectToRealmByRoute(savedIp, savedPort, &raven_fd) < 0) {
         asprintf(&msg, RED "ERROR | Cannot connect to [%s] at %s:%d\n" RESET, 
@@ -133,7 +147,7 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
         return -1;
     }
     
-    // 5. Crear trama ALLIANCE_RESPONSE (0x03)
+    // 4. Crear trama ALLIANCE_RESPONSE (0x03)
     // ORIGIN: IP:Port nostre (per que ell sàpiga com connectar-se directament)
     // DESTINATION: Nom del regne que va demanar l'aliança
     // DATA: ACCEPT/REJECT&<NomNostre>
@@ -147,7 +161,7 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
     Frame responseFrame;
     createFrame(&responseFrame, ALLIANCE_RESPONSE, myOrigin, realmName, responseData);
     
-    // 6. Enviar la trama
+    // 5. Enviar la trama
     if (sendFrame(raven_fd, &responseFrame) < 0) {
         asprintf(&msg, RED "ERROR | Failed to send alliance response\n" RESET);
         customWrite(1, msg);
@@ -157,7 +171,7 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
         return -1;
     }
     
-    // 7. Esperar ACK (0x31) o NACK (0x69) del sol·licitant
+    // 6. Esperar ACK (0x31) o NACK (0x69) del sol·licitant
     Frame ackFrame;
     if (receiveFrame(raven_fd, &ackFrame) < 0) {
         asprintf(&msg, YELLOW "WARNING | No ACK received from [%s]\n" RESET, realmName);
@@ -206,11 +220,111 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
 }
 
 int sendProductListRequest(Maester *maester, const char *realmName) {
-    (void)maester;
-    (void)realmName;
+    if (!maester || !realmName) {
+        return -1;
+    }
     
-    customWrite(1, YELLOW "TODO: sendProductListRequest not yet implemented\n" RESET);
-    return -1;
+    char *msg;
+    
+    // 1. Buscar ruta al regne aliat (thread-safe)
+    // Primero intentamos conexión directa si tenemos IP del aliado
+    char *allyIp = NULL;
+    int allyPort = 0;
+    int allyStatus = ALLIANCE_NONE;
+    
+    if (!getAllianceInfo(maester, realmName, &allyIp, &allyPort, &allyStatus, NULL)) {
+        asprintf(&msg, RED "ERROR | No alliance info for [%s]\n" RESET, realmName);
+        customWrite(1, msg);
+        free(msg);
+        return -1;
+    }
+    
+    // 2. Determinar cómo conectar: directo al aliado o via ruta
+    char *targetIp = NULL;
+    int targetPort = 0;
+    
+    if (allyIp && allyPort > 0) {
+        // Conexión directa al aliado
+        targetIp = allyIp;
+        targetPort = allyPort;
+    } else {
+        // Buscar ruta (el aliado responderá desde su IP)
+        if (allyIp) free(allyIp);
+        if (!getRouteInfo(maester, realmName, &targetIp, &targetPort)) {
+            if (!getRouteInfo(maester, NULL, &targetIp, &targetPort)) {
+                asprintf(&msg, RED "ERROR | No route to realm [%s]\n" RESET, realmName);
+                customWrite(1, msg);
+                free(msg);
+                return -1;
+            }
+        }
+    }
+    
+    // 3. Conectar
+    int raven_fd = -1;
+    if (connectToRealmByRoute(targetIp, targetPort, &raven_fd) < 0) {
+        asprintf(&msg, RED "ERROR | Cannot connect to [%s]\n" RESET, realmName);
+        customWrite(1, msg);
+        free(msg);
+        free(targetIp);
+        return -1;
+    }
+    
+    // 4. Crear trama PRODUCT_LIST_REQUEST (TYPE 0x11)
+    char myOrigin[IP_SIZE];
+    snprintf(myOrigin, IP_SIZE, "%s:%d", maester->ip, maester->port);
+    
+    Frame requestFrame;
+    createFrame(&requestFrame, PRODUCT_LIST_REQUEST, myOrigin, realmName, maester->name);
+    
+    // 5. Enviar la trama
+    if (sendFrame(raven_fd, &requestFrame) < 0) {
+        asprintf(&msg, RED "ERROR | Failed to send product list request\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        close(raven_fd);
+        free(targetIp);
+        return -1;
+    }
+    
+    // 6. Esperar respuesta (Fase 2: solo ACK)
+    Frame responseFrame;
+    if (receiveFrame(raven_fd, &responseFrame) < 0) {
+        asprintf(&msg, RED "Els corbs s'han perdut - Error [NO_RESPONSE]\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        close(raven_fd);
+        free(targetIp);
+        return -1;
+    }
+    
+    close(raven_fd);
+    free(targetIp);
+    
+    // 7. Procesar respuesta
+    if (responseFrame.type == ACK_FILE) {
+        asprintf(&msg, GREEN "Product list request acknowledged by [%s]\n" RESET, realmName);
+        customWrite(1, msg);
+        free(msg);
+        // Fase 3: aquí se procesaría la lista de productos
+        customWrite(1, YELLOW "(Product list processing will be available in Phase 3)\n" RESET);
+        return 0;
+    } else if (responseFrame.type == ERR_UNAUTHORIZED) {
+        asprintf(&msg, RED "Els corbs s'han perdut - Error [UNAUTHORIZED]\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        return -1;
+    } else if (responseFrame.type == NACK_ERROR) {
+        asprintf(&msg, RED "Els corbs s'han perdut - Error [NACK]\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        return -1;
+    } else {
+        asprintf(&msg, YELLOW "Unexpected response type 0x%02X\n" RESET, responseFrame.type);
+        customWrite(1, msg);
+        free(msg);
+        return -1;
+    }
 }
 
 

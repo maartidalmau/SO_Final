@@ -14,10 +14,10 @@ typedef struct {
     uint8_t type; //para valores alfanumericos mejor uint8 que char 
     char ip_origin[IP_SIZE];
     char ip_destination[IP_SIZE];
-    uint16_t data_lenght;
+    uint16_t data_length;
     char data[DATA_MAX_SIZE];
     uint16_t checksum;
-}Frame;
+} __attribute__((packed)) Frame;
 
 uint16_t calcChecksum(const Frame *frame);
 void serializar_trama(const Frame *frame, uint8_t *buffer);

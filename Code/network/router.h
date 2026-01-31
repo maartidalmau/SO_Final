@@ -21,7 +21,7 @@ int isDestination(Maester *maester, const char *destination);
 
 Route* findRoute(Maester *maester, const char *realmName);
 
-Route* getDefaultRoute(Maester *maester);
+int getRouteInfo(Maester *maester, const char *realmName, char **ipOut, int *portOut);
 
 int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out);
 

@@ -18,8 +18,9 @@ Route* findRoute(Maester *maester, const char *realmName) {
     // Lock: protect access to routes array
     pthread_mutex_lock(&maester->routes_mutex);
     
+    // First, try to find the specific realm
     for (int i = 0; i < maester->numRoutes; i++) {
-        // Skip DEFAULT route (use getDefaultRoute() for that)
+        // Skip DEFAULT route in this first pass
         if (strcasecmp(maester->routes[i].name, "DEFAULT") == 0) {
             continue;
         }
@@ -31,31 +32,58 @@ Route* findRoute(Maester *maester, const char *realmName) {
         }
     }
     
-    pthread_mutex_unlock(&maester->routes_mutex);
-    
-    return result;
-}
-
-Route* getDefaultRoute(Maester *maester) {
-    if (!maester) {
-        return NULL;
-    }
-    
-    Route *result = NULL;
-    
-    // Lock: protect access to routes array
-    pthread_mutex_lock(&maester->routes_mutex);
-    
-    for (int i = 0; i < maester->numRoutes; i++) {
-        if (strcasecmp(maester->routes[i].name, "DEFAULT") == 0) {
-            result = &maester->routes[i];
-            break;
+    // If not found, try DEFAULT route as fallback
+    if (!result) {
+        for (int i = 0; i < maester->numRoutes; i++) {
+            if (strcasecmp(maester->routes[i].name, "DEFAULT") == 0) {
+                result = &maester->routes[i];
+                break;
+            }
         }
     }
     
     pthread_mutex_unlock(&maester->routes_mutex);
     
     return result;
+}
+
+int getRouteInfo(Maester *maester, const char *realmName, char **ipOut, int *portOut) {
+    if (!maester) {
+        return 0;
+    }
+    
+    int found = 0;
+    int searchDefault = (realmName == NULL);
+    
+    pthread_mutex_lock(&maester->routes_mutex);
+    
+    for (int i = 0; i < maester->numRoutes; i++) {
+        int isDefault = (strcasecmp(maester->routes[i].name, "DEFAULT") == 0);
+        
+        if (searchDefault) {
+            // Looking for DEFAULT route
+            if (isDefault) {
+                if (ipOut) *ipOut = maester->routes[i].ip ? strdup(maester->routes[i].ip) : NULL;
+                if (portOut) *portOut = maester->routes[i].port;
+                found = 1;
+                break;
+            }
+        } else {
+            // Looking for specific realm (skip DEFAULT)
+            if (isDefault) continue;
+            
+            if (strcasecmp(maester->routes[i].name, realmName) == 0) {
+                if (ipOut) *ipOut = maester->routes[i].ip ? strdup(maester->routes[i].ip) : NULL;
+                if (portOut) *portOut = maester->routes[i].port;
+                found = 1;
+                break;
+            }
+        }
+    }
+    
+    pthread_mutex_unlock(&maester->routes_mutex);
+    
+    return found;
 }
 
 int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
@@ -117,28 +145,19 @@ int connectToRealm(Route *route, int *raven_fd_out) {
 }
 
 int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
-    (void)fromSocket; //De moment no utilitzem aquesta funcio
     if (!maester || !frame) {
         return -1;
     }
-    
-    // Comprovar si la trama ens l'hem originat nosaltres (LOOP)
-    // ip_origin conté IP:Port, cal comparar correctament
     char myIpPort[IP_SIZE];
     snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
     
     if (strcmp(myIpPort, frame->ip_origin) == 0) {
-        // We sent this frame originally, and it came back to us
         customWrite(1, RED "Els corbs s'han perdut - Error [LOOP_DETECTED]\n" RESET);        
         return -1;
     }
     
     Route *nextHop = findRoute(maester, frame->ip_destination);
     
-    if (!nextHop) {
-        // No direct route, try DEFAULT
-        nextHop = getDefaultRoute(maester);
-    }
     if (!nextHop) {
         // Enviar ERR_UNKNOWN_REALM (0x21) al origen
         char myIpPort[IP_SIZE];
@@ -152,9 +171,6 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         
         // Intentar enviar l'error al origen (si tenim ruta)
         Route *originRoute = findRoute(maester, frame->ip_origin);
-        if (!originRoute) {
-            originRoute = getDefaultRoute(maester);
-        }
         
         if (originRoute) {
             int error_fd;
@@ -183,19 +199,6 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         sendNack(fromSocket, maester->name, "SEND_FAILED");
         return -1;
     }
-    
-    char *msg;
-    asprintf(&msg, GREEN "Frame forwarded successfully to [%s]\n" RESET, nextHop->name);
-    customWrite(1, msg);
-    free(msg);
-    
-    // ═══════════════════════════════════════════════════════════
-    // STEP 4: Send ACK to sender (hop confirmation)
-    // ═══════════════════════════════════════════════════════════
-    
-    //Frame ackFrame;
-    //createACKFrame(&ackFrame, maester->name, frame->ip_origin);
-    //sendFrame(fromSocket, &ackFrame);
     
     close(raven_fd_hop);
     

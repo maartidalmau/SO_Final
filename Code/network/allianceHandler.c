@@ -88,8 +88,13 @@ void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int
     
     maester->alliances = temp;
     
-    // Inicializar nueva alianza
+    // Inicializar nueva alianza con validación de strdup
     maester->alliances[maester->numAlliances].name = strdup(name);
+    if (!maester->alliances[maester->numAlliances].name) {
+        pthread_mutex_unlock(&maester->alliances_mutex);
+        customWrite(1, RED "ERROR | Cannot allocate memory for alliance name\n" RESET);
+        return;
+    }
     maester->alliances[maester->numAlliances].ip = ip ? strdup(ip) : NULL;
     maester->alliances[maester->numAlliances].port = port;
     maester->alliances[maester->numAlliances].status = status;
@@ -98,4 +103,31 @@ void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int
     maester->numAlliances++;
     
     pthread_mutex_unlock(&maester->alliances_mutex);
+}
+
+int getAllianceInfo(Maester *maester, const char *realmName, char **ipOut, int *portOut, int *statusOut, time_t *requestTimeOut) {
+    if (!maester || !realmName) {
+        return 0;
+    }
+    
+    int found = 0;
+    
+    pthread_mutex_lock(&maester->alliances_mutex);
+    
+    for (int i = 0; i < maester->numAlliances; i++) {
+        if (strcasecmp(maester->alliances[i].name, realmName) == 0) {
+            if (ipOut) {
+                *ipOut = maester->alliances[i].ip ? strdup(maester->alliances[i].ip) : NULL;
+            }
+            if (portOut) *portOut = maester->alliances[i].port;
+            if (statusOut) *statusOut = maester->alliances[i].status;
+            if (requestTimeOut) *requestTimeOut = maester->alliances[i].requestTime;
+            found = 1;
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&maester->alliances_mutex);
+    
+    return found;
 }

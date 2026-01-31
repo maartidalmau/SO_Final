@@ -29,9 +29,9 @@ void createFrame(Frame *frame, uint8_t type, const char *origin, const char *des
             dataLen = DATA_MAX_SIZE;
         }
         memcpy(frame->data, data, dataLen);
-        frame->data_lenght = dataLen;
+        frame->data_length = dataLen;
     } else {
-        frame->data_lenght = 0;
+        frame->data_length = 0;
     }
 
     // Calculate the checksum

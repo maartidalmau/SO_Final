@@ -7,8 +7,6 @@ int isProductInInventory(char *productName, Maester *maester) {
 
     for (int i = 0; i < maester->numProducts; i++) {
         if (strcasecmp(maester->inventory[i].name, productName) == 0) {
-            // Copiar el nom exacte (case-sensitive) del producte
-            strcpy(productName, maester->inventory[i].name);
             return 1;
         }
     }
@@ -22,8 +20,6 @@ int checkRealm(Trade *trade, Maester *maester) {
 
     for (int i = 0; i < maester->numRoutes; i++) {
         if (strcasecmp(trade->kingdom, maester->routes[i].name) == 0) {
-            // Copiar el nom exacte del realm
-            strcpy(trade->kingdom, maester->routes[i].name);
             return 1;
         }
     }

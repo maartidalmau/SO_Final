@@ -1,23 +1,23 @@
 #COMPILER
 CC = gcc
-FLAGS = -Wall -Wextra -Werror -pthread -I. -I./console -I./network 
-DFLAGS = -Wall -Wextra -g -pthread -I. -I./console -I./network
+FLAGS = -Wall -Wextra -Werror -pthread -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
+DFLAGS = -Wall -Wextra -g -pthread -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
 
-SRC = maester.c \
-	  console/console.c \
-	  console/trade.c \
-	  console/list.c \
-	  network/server.c \
-	  network/client.c \
-	  network/network.c \
-	  network/frame.c \
-	  network/router.c \
-	  network/frameHandler.c \
-	  network/allianceHandler.c \
-	  utils.c \
-	  dataStructures.c
+SRC = src/maester.c \
+	  src/dataStructures.c \
+	  src/utils.c \
+	  src/console/console.c \
+	  src/console/trade.c \
+	  src/console/list.c \
+	  src/network/core/frame.c \
+	  src/network/core/network.c \
+	  src/network/handlers/allianceHandler.c \
+	  src/network/handlers/frameHandler.c \
+	  src/network/transport/server.c \
+	  src/network/transport/client.c \
+	  src/network/transport/router.c
 
-OBJ = $(SRC:.c=.o)
+OBJ = $(patsubst src/%.c,obj/%.o,$(SRC))
 
 BINARY = maester
 
@@ -28,12 +28,13 @@ all: $(BINARY)
 $(BINARY): $(OBJ)
 	$(CC) $(FLAGS) $(OBJ) -o $(BINARY)
 
-# Compile .c into .o
-%.o: %.c
+# Compile .c from src/ into .o in obj/
+obj/%.o: src/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(FLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ)
+	rm -rf obj/
 
 fclean: clean
 	rm -f $(BINARY)

@@ -3,7 +3,7 @@
 
 #define _GNU_SOURCE
 
-#include "../dataStructures.h"
+#include "dataStructures.h"
 #include "network.h"
 
 

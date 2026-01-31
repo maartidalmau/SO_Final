@@ -1,8 +1,0 @@
-TheVale
-/thevale_stock
-3
-192.168.1.4
-8096
---- ROUTES ---
-DEFAULT 192.168.1.5 8097
-KingsLanding 192.168.1.5 8097

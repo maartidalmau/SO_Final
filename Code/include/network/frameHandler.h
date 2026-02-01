@@ -7,6 +7,7 @@
 #include "frame.h"
 #include "router.h"
 #include "dataStructures.h"
+#include "allianceHandler.h"
 
 #include <stdio.h>
 #include <stdlib.h>

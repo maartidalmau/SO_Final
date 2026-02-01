@@ -1,6 +1,4 @@
 #include "frameHandler.h"
-#include "allianceHandler.h"
-
 
 void processFrame(Maester *maester, Frame *frame, int fromSocket) {
     if (!maester || !frame) {
@@ -14,11 +12,7 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
         customWrite(1, msg);
         free(msg);
         
-        switch (frame->type) {
-            case PING_PONG:
-                //handlePingPong(maester, frame, fromSocket);
-                break;
-                
+        switch (frame->type) {   
             case MAESTER_DISCONNECT:
                 handleDisconnect(maester, frame);
                 break;

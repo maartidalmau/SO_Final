@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h>
+#include <stdint.h>
 
 #include "utils.h"
 

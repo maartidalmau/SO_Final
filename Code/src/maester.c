@@ -51,13 +51,6 @@ int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
 }
 
 int main(int argc, char *argv[]) {
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = rsiCtrlC;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-
-
     char *msg;
     if (argc != 3) {
         asprintf(&msg, "%sERROR | Use %s <Maester file> <Stock file>%s\n", RED, argv[0], RESET);
@@ -70,6 +63,56 @@ int main(int argc, char *argv[]) {
     if (loadMaesterData(&maester, argv[1], argv[2])) {
         return 1;
     }
+
+    //We allocate memory for the pipes and the envoy PIDs
+    EnvoyPInfo envoyInfo;
+    envoyInfo.p2c = malloc(maester->envoys * sizeof(int*));
+    envoyInfo.c2p = malloc(maester->envoys * sizeof(int*));
+    envoyInfo.envoyPIDs = malloc(maester->envoys * sizeof(pid_t));
+
+    //We initialize the pipes
+    for (int i = 0; i < maester->envoys; i++) {
+        envoyInfo.p2c[i] = malloc(2 * sizeof(int));
+        envoyInfo.c2p[i] = malloc(2 * sizeof(int));
+        pipe(envoyInfo.p2c[i]);
+        pipe(envoyInfo.c2p[i]);
+    }
+
+    for (int i = 0; i < maester->envoys; i++) {
+        envoyInfo.envoyPIDs[i] = fork();
+
+        if (envoyInfo.envoyPIDs[i] == 0) {
+            //Envoy process
+            for (int j = 0; j < maester->envoys; j++) {
+                //Close other pipes
+                if (j != i) {
+                    close(envoyInfo.p2c[j][0]);
+                    close(envoyInfo.p2c[j][1]);
+                    close(envoyInfo.c2p[j][0]);
+                    close(envoyInfo.c2p[j][1]);
+                }
+                //Close own pipes we don't use
+                close(envoyInfo.p2c[i][1]);
+                close(envoyInfo.c2p[i][0]);
+            }
+        } else if (envoyInfo.envoyPIDs[i] > 0) {
+            //Maester process
+            close(envoyInfo.p2c[i][0]);
+            close(envoyInfo.c2p[i][1]);
+        } else {
+            customWrite(1, RED "ERROR | Fork failed\n" RESET);
+            destroyMaester(maester);
+            return 1;
+        }
+    }
+
+    struct sigaction sa;    
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = rsiCtrlC;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+
 
     sigaction(SIGINT, &sa, NULL);
 
@@ -99,7 +142,7 @@ int main(int argc, char *argv[]) {
     free(msg);
     
     destroyMaester(maester);
-    maester = NULL; //Mirar si fa falta
+    maester = NULL;
 
     return 0;
 }

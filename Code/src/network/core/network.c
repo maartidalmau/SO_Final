@@ -27,7 +27,7 @@ uint16_t calcChecksum(const Frame *frame) {
     }
     
     // Aplicar módulo 32768 
-    return (uint16_t)(suma % 32768);
+    return (uint16_t)(suma % 65536);
 }
 
 // Función para serializar una trama a un buffer de 320 bytes

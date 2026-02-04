@@ -65,6 +65,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    //initEnvoys(*maester);
+
     struct sigaction sa;    
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = rsiCtrlC;

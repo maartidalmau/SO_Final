@@ -15,7 +15,8 @@ SRC = src/maester.c \
 	  src/network/handlers/frameHandler.c \
 	  src/network/transport/server.c \
 	  src/network/transport/client.c \
-	  src/network/transport/router.c
+	  src/network/transport/router.c \
+	  src/network/core/envoy.c
 
 OBJ = $(patsubst src/%.c,obj/%.o,$(SRC))
 

@@ -2,7 +2,6 @@
 
 void initEnvoys(Maester *maester){
     //We allocate memory for the pipes and the envoy PIDs
-    EnvoyPInfo envoyInfo;
     maester->envoyPInfo.p2c = malloc(maester->envoys * sizeof(int*));
     maester->envoyPInfo.c2p = malloc(maester->envoys * sizeof(int*));
     maester->envoyPInfo.envoyPIDs = malloc(maester->envoys * sizeof(pid_t));
@@ -40,7 +39,7 @@ void initEnvoys(Maester *maester){
         } else {
             customWrite(1, RED "ERROR | Fork failed\n" RESET);
             destroyMaester(maester);
-            return 1;
+            return;
         }
     }
 }
@@ -51,7 +50,7 @@ void destroyEnvoys(Maester *maester){
     }
 
     for (int i = 0; i < maester->envoys; i++) {
-        wait(maester->envoyPInfo.envoyPIDs[i]);
+        waitpid(maester->envoyPInfo.envoyPIDs[i], NULL, 0);
         free(maester->envoyPInfo.p2c[i]);
         free(maester->envoyPInfo.c2p[i]);
     }

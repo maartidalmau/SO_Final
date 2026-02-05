@@ -1,6 +1,40 @@
 #include "envoy.h"
 
-void initEnvoys(Maester *maester){
+#include <stdio.h>
+
+volatile sig_atomic_t *envoyRunning = NULL;
+
+void rsiShutdownEnvoy() {
+    if (envoyRunning) {
+        *envoyRunning = 0;
+    }
+}
+
+void envoyProcess(Envoy envoy) {
+    struct sigaction sa;    
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = rsiShutdownEnvoy;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGUSR1, &sa, NULL);
+
+    //Ignore Ctrl+C
+    signal(SIGINT, SIG_IGN);
+
+    envoyRunning = &(envoy.running);
+    envoy.running = 1;
+
+    while(envoy.running) {
+        pause();
+    }
+    
+    //Close pipes and exit
+    close(envoy.p2c);
+    close(envoy.c2p);
+    exit(0);
+}
+
+void createEnvoys(Maester *maester){
     //We allocate memory for the pipes and the envoy PIDs
     maester->envoyPInfo.p2c = malloc(maester->envoys * sizeof(int*));
     maester->envoyPInfo.c2p = malloc(maester->envoys * sizeof(int*));
@@ -32,9 +66,14 @@ void initEnvoys(Maester *maester){
                 close(maester->envoyPInfo.p2c[i][1]);
                 close(maester->envoyPInfo.c2p[i][0]);
             }
+
+            Envoy envoy;
+            envoy.p2c = maester->envoyPInfo.p2c[i][0];
+            envoy.c2p = maester->envoyPInfo.c2p[i][1];
+    
             destroyEnvoys(maester);
             destroyMaester(maester);
-            exit(0);
+            envoyProcess(envoy);
         } else if (maester->envoyPInfo.envoyPIDs[i] > 0) {
             //Maester process
             close(maester->envoyPInfo.p2c[i][0]);
@@ -45,20 +84,4 @@ void initEnvoys(Maester *maester){
             return;
         }
     }
-}
-
-void destroyEnvoys(Maester *maester){
-    for(int i = 0; i<maester->envoys;i++){
-        //kill(maester->envoyPInfo.envoyPIDs[i], SIGUSR1);
-    }
-
-    for (int i = 0; i < maester->envoys; i++) {
-        waitpid(maester->envoyPInfo.envoyPIDs[i], NULL, 0);
-        free(maester->envoyPInfo.p2c[i]);
-        free(maester->envoyPInfo.c2p[i]);
-    }
-
-    free(maester->envoyPInfo.p2c);
-    free(maester->envoyPInfo.c2p);
-    free(maester->envoyPInfo.envoyPIDs);
 }

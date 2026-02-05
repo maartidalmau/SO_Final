@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h>
@@ -97,6 +98,12 @@ typedef struct {
     sem_t envoys_sem;                  // Limits concurrent outgoing connections
 } Maester;
 
+typedef struct {
+    int p2c;
+    int c2p;
+    volatile sig_atomic_t running;
+} Envoy;
+
 
 
 int readConfigFile(char *filename, Maester *maester);
@@ -106,5 +113,9 @@ int readProducts(char *filename, Maester *maester);
 void destroyMaester(Maester *maester);
 
 void freeTrade(Trade **trade);
+
+void destroyEnvoys(Maester *maester);
+
+void endAndCleanEnvoys(Maester *maester);
 
 #endif

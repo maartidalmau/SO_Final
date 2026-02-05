@@ -5,7 +5,6 @@
 
 #include "dataStructures.h"
 
-void initEnvoys(Maester *maester);
-void destroyEnvoys(Maester *maester);
+void createEnvoys(Maester *maester);
 
 #endif

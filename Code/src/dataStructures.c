@@ -253,18 +253,29 @@ void freeTrade(Trade **trade) {
     *trade = NULL;
 }
 
-void destroyEnvoyPInfo(EnvoyPInfo *envoyInfo, int numEnvoys) {
-    if (!envoyInfo) return;
-
-    for (int i = 0; i < numEnvoys; i++) {
-        if (envoyInfo->p2c) {
-            free(envoyInfo->p2c[i]);
-        }
-        if (envoyInfo->c2p) {
-            free(envoyInfo->c2p[i]);
-        }
+void destroyEnvoys(Maester *maester) {
+    for (int i = 0; i < maester->envoys; i++) {
+        free(maester->envoyPInfo.p2c[i]);
+        free(maester->envoyPInfo.c2p[i]);
     }
-    free(envoyInfo->p2c);
-    free(envoyInfo->c2p);
-    free(envoyInfo->envoyPIDs);
+
+    free(maester->envoyPInfo.p2c);
+    free(maester->envoyPInfo.c2p);
+    free(maester->envoyPInfo.envoyPIDs);
+}
+
+void endAndCleanEnvoys(Maester *maester) {
+    for (int i = 0; i<maester->envoys;i++){
+        kill(maester->envoyPInfo.envoyPIDs[i], SIGUSR1);
+    }
+
+    for (int i = 0; i < maester->envoys; i++) {
+        waitpid(maester->envoyPInfo.envoyPIDs[i], NULL, 0);
+        free(maester->envoyPInfo.p2c[i]);
+        free(maester->envoyPInfo.c2p[i]);
+    }
+
+    free(maester->envoyPInfo.p2c);
+    free(maester->envoyPInfo.c2p);
+    free(maester->envoyPInfo.envoyPIDs);
 }

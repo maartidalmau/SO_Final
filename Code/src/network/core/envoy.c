@@ -12,6 +12,7 @@ void initEnvoys(Maester *maester){
         maester->envoyPInfo.c2p[i] = malloc(2 * sizeof(int));
         pipe(maester->envoyPInfo.p2c[i]);
         pipe(maester->envoyPInfo.c2p[i]);
+        maester->envoyPInfo.envoyPIDs[i] = -1;
     }
 
     for (int i = 0; i < maester->envoys; i++) {
@@ -31,6 +32,8 @@ void initEnvoys(Maester *maester){
                 close(maester->envoyPInfo.p2c[i][1]);
                 close(maester->envoyPInfo.c2p[i][0]);
             }
+            destroyEnvoys(maester);
+            destroyMaester(maester);
             exit(0);
         } else if (maester->envoyPInfo.envoyPIDs[i] > 0) {
             //Maester process
@@ -46,7 +49,7 @@ void initEnvoys(Maester *maester){
 
 void destroyEnvoys(Maester *maester){
     for(int i = 0; i<maester->envoys;i++){
-        kill(maester->envoyPInfo.envoyPIDs[i], SIGUSR1);
+        //kill(maester->envoyPInfo.envoyPIDs[i], SIGUSR1);
     }
 
     for (int i = 0; i < maester->envoys; i++) {

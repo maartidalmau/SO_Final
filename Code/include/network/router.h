@@ -23,9 +23,9 @@ Route* findRoute(Maester *maester, const char *realmName);
 
 int getRouteInfo(Maester *maester, const char *realmName, char **ipOut, int *portOut);
 
-int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out);
+int connectToRealmByRoute(const char *ip, int port, int *fd_out);
 
-int connectToRealm(Route *route, int *raven_fd_out);
+int connectToRealm(Route *route, int *fd_out);
 
 int forwardFrame(Maester *maester, Frame *frame, int fromSocket);
 

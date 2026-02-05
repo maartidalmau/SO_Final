@@ -49,8 +49,8 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     }
     
     // 3. Connectar al següent hop
-    int raven_fd = -1;
-    if (connectToRealmByRoute(routeIp, routePort, &raven_fd) < 0) {
+    int fd_nextHop = -1;
+    if (connectToRealmByRoute(routeIp, routePort, &fd_nextHop) < 0) {
         asprintf(&msg, RED "ERROR | Cannot connect to route for [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
@@ -74,16 +74,16 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     createFrame(&requestFrame, ALLIANCE_REQUEST, myOrigin, realmName, frameData);
     
     // 5. Enviar la trama
-    if (sendFrame(raven_fd, &requestFrame) < 0) {
+    if (sendFrame(fd_nextHop, &requestFrame) < 0) {
         asprintf(&msg, RED "ERROR | Failed to send alliance request to [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
-        close(raven_fd);
+        close(fd_nextHop);
         return -1;
     }
     
     // 6. Tancar connexió immediatament (NO BLOQUEJANT - no esperem resposta aquí)
-    close(raven_fd);
+    close(fd_nextHop);
     
     // 7. Crear aliança com a PENDING amb timestamp
     addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_PENDING);
@@ -137,8 +137,8 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
     }
     
     // 3. Connectar directament a la IP:Port del sol·licitant
-    int raven_fd = -1;
-    if (connectToRealmByRoute(savedIp, savedPort, &raven_fd) < 0) {
+    int fd_dest = -1;
+    if (connectToRealmByRoute(savedIp, savedPort, &fd_dest) < 0) {
         asprintf(&msg, RED "ERROR | Cannot connect to [%s] at %s:%d\n" RESET, 
                  realmName, savedIp, savedPort);
         customWrite(1, msg);
@@ -162,22 +162,22 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
     createFrame(&responseFrame, ALLIANCE_RESPONSE, myOrigin, realmName, responseData);
     
     // 5. Enviar la trama
-    if (sendFrame(raven_fd, &responseFrame) < 0) {
+    if (sendFrame(fd_dest, &responseFrame) < 0) {
         asprintf(&msg, RED "ERROR | Failed to send alliance response\n" RESET);
         customWrite(1, msg);
         free(msg);
-        close(raven_fd);
+        close(fd_dest);
         free(savedIp);
         return -1;
     }
     
     // 6. Esperar ACK (0x31) o NACK (0x69) del sol·licitant
     Frame ackFrame;
-    if (receiveFrame(raven_fd, &ackFrame) < 0) {
+    if (receiveFrame(fd_dest, &ackFrame) < 0) {
         asprintf(&msg, YELLOW "WARNING | No ACK received from [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
-        close(raven_fd);
+        close(fd_dest);
         // Actualitzem estat igualment (optimista)
         if (accept) {
             addOrUpdateAlliance(maester, realmName, savedIp, savedPort, ALLIANCE_ACTIVE);
@@ -188,7 +188,7 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
         return 0;
     }
     
-    close(raven_fd);
+    close(fd_dest);
     
     // 8. Processar resposta i actualitzar estat
     if (ackFrame.type == ACK_FILE) {
@@ -261,8 +261,8 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
     }
     
     // 3. Conectar
-    int raven_fd = -1;
-    if (connectToRealmByRoute(targetIp, targetPort, &raven_fd) < 0) {
+    int fd_dest = -1;
+    if (connectToRealmByRoute(targetIp, targetPort, &fd_dest) < 0) {
         asprintf(&msg, RED "ERROR | Cannot connect to [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
@@ -278,27 +278,27 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
     createFrame(&requestFrame, PRODUCT_LIST_REQUEST, myOrigin, realmName, maester->name);
     
     // 5. Enviar la trama
-    if (sendFrame(raven_fd, &requestFrame) < 0) {
+    if (sendFrame(fd_dest, &requestFrame) < 0) {
         asprintf(&msg, RED "ERROR | Failed to send product list request\n" RESET);
         customWrite(1, msg);
         free(msg);
-        close(raven_fd);
+        close(fd_dest);
         free(targetIp);
         return -1;
     }
     
     // 6. Esperar respuesta (Fase 2: solo ACK)
     Frame responseFrame;
-    if (receiveFrame(raven_fd, &responseFrame) < 0) {
-        asprintf(&msg, RED "Els corbs s'han perdut - Error [NO_RESPONSE]\n" RESET);
+    if (receiveFrame(fd_dest, &responseFrame) < 0) {
+        asprintf(&msg, RED "Error [NO_RESPONSE]\n" RESET);
         customWrite(1, msg);
         free(msg);
-        close(raven_fd);
+        close(fd_dest);
         free(targetIp);
         return -1;
     }
     
-    close(raven_fd);
+    close(fd_dest);
     free(targetIp);
     
     // 7. Procesar respuesta
@@ -310,12 +310,12 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
         customWrite(1, YELLOW "(Product list processing will be available in Phase 3)\n" RESET);
         return 0;
     } else if (responseFrame.type == ERR_UNAUTHORIZED) {
-        asprintf(&msg, RED "Els corbs s'han perdut - Error [UNAUTHORIZED]\n" RESET);
+        asprintf(&msg, RED "Error [UNAUTHORIZED]\n" RESET);
         customWrite(1, msg);
         free(msg);
         return -1;
     } else if (responseFrame.type == NACK_ERROR) {
-        asprintf(&msg, RED "Els corbs s'han perdut - Error [NACK]\n" RESET);
+        asprintf(&msg, RED "Error [NACK]\n" RESET);
         customWrite(1, msg);
         free(msg);
         return -1;
@@ -345,8 +345,8 @@ void notifyDisconnect(Maester *maester) {
             maester->alliances[i].port > 0) {
             
             // Intentar connectar directament a l'aliat
-            int raven_fd = -1;
-            if (connectToRealmByRoute(maester->alliances[i].ip, maester->alliances[i].port, &raven_fd) == 0) {
+            int fd = -1;
+            if (connectToRealmByRoute(maester->alliances[i].ip, maester->alliances[i].port, &fd) == 0) {
 
                 char myOrigin[IP_SIZE];
                 snprintf(myOrigin, IP_SIZE, "%s:%d", maester->ip, maester->port);
@@ -356,13 +356,13 @@ void notifyDisconnect(Maester *maester) {
                 createFrame(&disconnectFrame, MAESTER_DISCONNECT, myOrigin, maester->alliances[i].name, maester->name);
                 
                 // Enviar la trama (no esperem ACK)
-                if (sendFrame(raven_fd, &disconnectFrame) == 0) {
+                if (sendFrame(fd, &disconnectFrame) == 0) {
                     asprintf(&msg, CYAN "Notified [%s] of disconnect\n" RESET, maester->alliances[i].name);
                     customWrite(1, msg);
                     free(msg);
                 }
                 
-                close(raven_fd);
+                close(fd);
             } else {
             }
         }

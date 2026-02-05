@@ -1,6 +1,4 @@
 #include "envoy.h"
-#include "dataStructures.h"
-
 
 void initEnvoys(Maester *maester){
     //We allocate memory for the pipes and the envoy PIDs
@@ -34,7 +32,7 @@ void initEnvoys(Maester *maester){
                 close(envoyInfo.p2c[i][1]);
                 close(envoyInfo.c2p[i][0]);
             }
-            return 0;
+            exit(0);
         } else if (envoyInfo.envoyPIDs[i] > 0) {
             //Maester process
             close(envoyInfo.p2c[i][0]);
@@ -48,7 +46,17 @@ void initEnvoys(Maester *maester){
 }
 
 void destroyEnvoys(Maester *maester){
-    for(int i=0; i<maester->envoys;i++){
-        wait();
+    for(int i = 0; i<maester->envoys;i++){
+        kill(maester->envoyPInfo.envoyPIDs[i], SIGUSR1);
     }
+
+    for (int i = 0; i < maester->envoys; i++) {
+        wait(maester->envoyPInfo.envoyPIDs[i]);
+        free(maester->envoyPInfo.p2c[i]);
+        free(maester->envoyPInfo.c2p[i]);
+    }
+
+    free(maester->envoyPInfo.p2c);
+    free(maester->envoyPInfo.c2p);
+    free(maester->envoyPInfo.envoyPIDs);
 }

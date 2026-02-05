@@ -86,8 +86,8 @@ int getRouteInfo(Maester *maester, const char *realmName, char **ipOut, int *por
     return found;
 }
 
-int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
-    if (!ip || !raven_fd_out) {
+int connectToRealmByRoute(const char *ip, int port, int *fd_out) {
+    if (!ip || !fd_out) {
         return -1;
     }
     
@@ -99,9 +99,9 @@ int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
     free(msg);
     
     // Create TCP socket
-    int raven_fd_client = socket(AF_INET, SOCK_STREAM, 0);
-    if (raven_fd_client < 0) {
-        customWrite(1, RED "Els corbs s'han perdut - Error [SOCKET_CREATE_FAILED]\n" RESET);
+    int fd_client = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd_client < 0) {
+        customWrite(1, RED "Error [SOCKET_CREATE_FAILED]\n" RESET);
         return -1;
     }
     
@@ -112,18 +112,18 @@ int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
     
     if (inet_pton(AF_INET, ip, &serverAddr.sin_addr) <= 0) {
         customWrite(1, RED "ERROR | Invalid IP address\n" RESET);
-        close(raven_fd_client);
+        close(fd_client);
         return -1;
     }
     
     serverAddr.sin_port = htons(targetPort);
     
     // Connect to server
-    if (connect(raven_fd_client, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+    if (connect(fd_client, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         asprintf(&msg, RED "ERROR | Connection refused to %s:%d\n" RESET, ip, targetPort);
         customWrite(1, msg);
         free(msg);
-        close(raven_fd_client);
+        close(fd_client);
         return -1;
     }
     
@@ -132,16 +132,16 @@ int connectToRealmByRoute(const char *ip, int port, int *raven_fd_out) {
     free(msg);
     
     // Return socket descriptor
-    *raven_fd_out = raven_fd_client;
+    *fd_out = fd_client;
     return 0;
 }
 
-int connectToRealm(Route *route, int *raven_fd_out) {
-    if (!route || !raven_fd_out) {
+int connectToRealm(Route *route, int *fd_out) {
+    if (!route || !fd_out) {
         return -1;
     }
     
-    return connectToRealmByRoute(route->ip, route->port, raven_fd_out);
+    return connectToRealmByRoute(route->ip, route->port, fd_out);
 }
 
 int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
@@ -152,7 +152,7 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
     snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
     
     if (strcmp(myIpPort, frame->ip_origin) == 0) {
-        customWrite(1, RED "Els corbs s'han perdut - Error [LOOP_DETECTED]\n" RESET);        
+        customWrite(1, RED "Error [LOOP_DETECTED]\n" RESET);        
         return -1;
     }
     
@@ -181,26 +181,26 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         }
         
         char *msg;
-        asprintf(&msg, RED "Els corbs s'han perdut - Error [UNKNOWN_REALM: %s]\n" RESET, frame->ip_destination);
+        asprintf(&msg, RED "Error [UNKNOWN_REALM: %s]\n" RESET, frame->ip_destination);
         customWrite(1, msg);
         free(msg);
         
         return -1;
     }
     
-    int raven_fd_hop;
-    if (connectToRealm(nextHop, &raven_fd_hop) < 0) {
+    int fd_hop;
+    if (connectToRealm(nextHop, &fd_hop) < 0) {
         sendNack(fromSocket, maester->name, "CONNECT_FAILED");
         return -1;
     }
     
-    if (sendFrame(raven_fd_hop, frame) < 0) {
-        close(raven_fd_hop);
+    if (sendFrame(fd_hop, frame) < 0) {
+        close(fd_hop);
         sendNack(fromSocket, maester->name, "SEND_FAILED");
         return -1;
     }
     
-    close(raven_fd_hop);
+    close(fd_hop);
     
     return 0;
 }

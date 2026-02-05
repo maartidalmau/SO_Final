@@ -41,8 +41,8 @@ int sendNack(int fd, const char *realmName, const char *errorCode);
 
 int validateChecksum(const Frame *frame);
 
-int sendFrame(int raven_fd_client, Frame *frame);
+int sendFrame(int fd_client, Frame *frame);
 
-int receiveFrame(int raven_fd_client, Frame *frame);
+int receiveFrame(int fd_client, Frame *frame);
 
 #endif // FRAME_H

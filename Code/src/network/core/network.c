@@ -26,7 +26,6 @@ uint16_t calcChecksum(const Frame *frame) {
         suma += (uint8_t)frame->data[i];
     }
     
-    // Aplicar módulo 32768 
     return (uint16_t)(suma % 65536);
 }
 

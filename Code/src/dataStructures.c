@@ -252,3 +252,19 @@ void freeTrade(Trade **trade) {
     free(t);
     *trade = NULL;
 }
+
+void destroyEnvoyPInfo(EnvoyPInfo *envoyInfo, int numEnvoys) {
+    if (!envoyInfo) return;
+
+    for (int i = 0; i < numEnvoys; i++) {
+        if (envoyInfo->p2c) {
+            free(envoyInfo->p2c[i]);
+        }
+        if (envoyInfo->c2p) {
+            free(envoyInfo->c2p[i]);
+        }
+    }
+    free(envoyInfo->p2c);
+    free(envoyInfo->c2p);
+    free(envoyInfo->envoyPIDs);
+}

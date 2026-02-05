@@ -65,13 +65,15 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    //initEnvoys(*maester);
+    initEnvoys(maester);
 
     struct sigaction sa;    
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = rsiCtrlC;
     sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
+
+
 
     sigaction(SIGINT, &sa, NULL);
 
@@ -88,6 +90,7 @@ int main(int argc, char *argv[]) {
     }
     
     notifyDisconnect(maester);
+    destroyEnvoys(maester);
     
     if (maester->serverSocket >= 0) {
         shutdown(maester->serverSocket, SHUT_RDWR);

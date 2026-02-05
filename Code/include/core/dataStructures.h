@@ -64,6 +64,7 @@ typedef struct {
     char *name;
     char *path;
     int envoys;
+    EnvoyPInfo envoyPInfo;
     char *ip;
     int port;
 

@@ -1,5 +1,5 @@
-#ifndef SOF1_SERVER_H
-#define SOF1_SERVER_H
+#ifndef SERVER_H
+#define SERVER_H
 
 //Standard libraries
 #define _GNU_SOURCE

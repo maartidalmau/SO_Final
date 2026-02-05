@@ -109,7 +109,7 @@ void handleNack(Maester *maester, Frame *frame, int fromSocket) {
     (void)fromSocket;
     
     char *msg;
-    asprintf(&msg, RED "Els corbs s'han perdut - NACK from realm [%s]\n" RESET, frame->data);
+    asprintf(&msg, RED "NACK from realm [%s]\n" RESET, frame->data);
     customWrite(1, msg);
     free(msg);
 }

@@ -7,7 +7,7 @@ void *workerThread(void *arg) {
     
     Frame frame;
     if (receiveFrame(args->clientSocket, &frame) < 0) {
-        customWrite(1, RED "Els corbs s'han perdut - Error [RECEIVE_FAILED]\n" RESET);
+        customWrite(1, RED "Error [RECEIVE_FAILED]\n" RESET);
         close(args->clientSocket);
         free(args);
         return NULL;

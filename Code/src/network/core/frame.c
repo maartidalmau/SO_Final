@@ -45,7 +45,7 @@ int sendNack(int fd, const char *realmName, const char *errorCode) {
     
     // Log the error
     char *msg;
-    asprintf(&msg, RED "Els corbs s'han perdut - Error [%s]\n" RESET, errorCode);
+    asprintf(&msg, RED "Error [%s]\n" RESET, errorCode);
     customWrite(1, msg);
     free(msg);
     
@@ -66,8 +66,8 @@ int validateChecksum(const Frame *frame) {
     return (expectedChecksum == frame->checksum);
 }
 
-int sendFrame(int raven_fd_client, Frame *frame) {
-    if (raven_fd_client < 0 || !frame) {
+int sendFrame(int fd_client, Frame *frame) {
+    if (fd_client < 0 || !frame) {
         return -1;
     }
 
@@ -82,7 +82,7 @@ int sendFrame(int raven_fd_client, Frame *frame) {
     ssize_t bytesLeft = TRAMA_SIZE;
     
     while (totalSent < TRAMA_SIZE) {
-        ssize_t sent = write(raven_fd_client, buffer + totalSent, bytesLeft);
+        ssize_t sent = write(fd_client, buffer + totalSent, bytesLeft);
         
         if (sent < 0) {
             // Error al enviar
@@ -101,8 +101,8 @@ int sendFrame(int raven_fd_client, Frame *frame) {
     return 0;
 }
 
-int receiveFrame(int raven_fd_client, Frame *frame) {
-    if (raven_fd_client < 0 || !frame) {
+int receiveFrame(int fd_client, Frame *frame) {
+    if (fd_client < 0 || !frame) {
         return -1;
     }
 
@@ -114,7 +114,7 @@ int receiveFrame(int raven_fd_client, Frame *frame) {
     ssize_t bytesLeft = TRAMA_SIZE;
     
     while (totalReceived < TRAMA_SIZE) {
-        ssize_t received = read(raven_fd_client, buffer + totalReceived, bytesLeft);
+        ssize_t received = read(fd_client, buffer + totalReceived, bytesLeft);
         
         if (received < 0) {
             // Error al recibir

@@ -60,6 +60,12 @@ typedef struct {
 } Trade;
 
 typedef struct {
+    int **p2c;
+    int **c2p;
+    pid_t *envoyPIDs;
+} EnvoyPInfo;
+
+typedef struct {
     // Maester information
     char *name;
     char *path;
@@ -91,11 +97,6 @@ typedef struct {
     sem_t envoys_sem;                  // Limits concurrent outgoing connections
 } Maester;
 
-typedef struct {
-    int **p2c;
-    int **c2p;
-    pid_t *envoyPIDs;
-} EnvoyPInfo;
 
 
 int readConfigFile(char *filename, Maester *maester);

@@ -14,14 +14,15 @@ void initMaester(Maester* m) {
     m->numAlliances = 0;
     m->running = 1;
     m->serverSocket = -1;
-    m->workersInfo
+    m->workersInfo = malloc(sizeof(WorkersInfo));
+    m->workersInfo->numWorkers = 0; 
+    m->workersInfo->workersCapacity = 10;
+    m->workersInfo->workersThreadID = malloc(10*sizeof(pthread_t));
     
-    // Initialize synchronization primitives
     pthread_mutex_init(&m->routes_mutex, NULL);
     pthread_mutex_init(&m->alliances_mutex, NULL);
     pthread_mutex_init(&m->inventory_mutex, NULL);
     pthread_mutex_init(&m->workersInfo->workers_mutex, NULL);
-    // envoys_sem will be initialized after reading config (with m->envoys value)
 }
 
 void initRoute(Route *r) {
@@ -225,6 +226,10 @@ void destroyMaester(Maester *maester) {
     pthread_mutex_destroy(&maester->alliances_mutex);
     pthread_mutex_destroy(&maester->inventory_mutex);
     sem_destroy(&maester->envoys_sem);
+
+    pthread_mutex_destroy(&maester->workersInfo->workers_mutex);
+    safeFree((void**)&maester->workersInfo->workersThreadID);
+    safeFree((void**)&maester->workersInfo);
     
     free(maester);
 

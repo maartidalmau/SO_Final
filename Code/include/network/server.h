@@ -27,4 +27,6 @@ void *serverThread(void *arg);
 
 void *workerThread(void *arg);
 
+void cerrarWorkers(Maester *maester);
+
 #endif

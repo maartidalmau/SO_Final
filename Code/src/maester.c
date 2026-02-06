@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     if (maester->serverSocket >= 0) {
         shutdown(maester->serverSocket, SHUT_RDWR);
     }
-    cleanUpWorkers(maester);
+    cerrarWorkers(maester);
 
     pthread_join(serverThreadID, NULL);
 

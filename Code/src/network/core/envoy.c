@@ -19,7 +19,7 @@ void envoyProcess(Envoy envoy) {
 
     //Ignore Ctrl+C
     signal(SIGINT, SIG_IGN);
-
+    
     envoyRunning = &(envoy.running);
     envoy.running = 1;
 

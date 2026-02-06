@@ -78,7 +78,6 @@ void *serverThread(void *arg) {
         struct sockaddr_in clientAddr;
         socklen_t clientLen = sizeof(clientAddr);
 
-        //Accept client connection
         int clientSocket = accept(maester->serverSocket, (struct sockaddr *)&clientAddr, &clientLen);
 
         if (clientSocket < 0) {
@@ -101,9 +100,18 @@ void *serverThread(void *arg) {
             close(clientSocket);
             free(workerArgs);
         }
-        
+        //expandir espacio de clientes si hace falta 
+
     }
 
     close(maester->serverSocket);
     return NULL;
+}
+
+void cerrarWorkers(Maester *maester){
+    pthread_mutex_lock(&maester->workersInfo->workers_mutex);
+    for (int i = 0; i < maester->workersInfo->numWorkers; i++){
+        pthread_join(maester->workersInfo->workersThreadID[i], NULL);
+    }
+    pthread_mutex_unlock(&maester->workersInfo->workers_mutex);
 }

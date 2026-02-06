@@ -13,6 +13,7 @@
 #include "envoy.h"
 
 volatile sig_atomic_t *running = NULL;
+volatile sig_atomic_t *envoyRunning = NULL;
 
 void rsiCtrlC() {
     if (running) {
@@ -23,10 +24,6 @@ void rsiCtrlC() {
 int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
     char *msg;
     *maester = malloc(sizeof(Maester));
-    if (!*maester) {
-        customWrite(1, RED "ERROR | Cannot allocate memory for Maester\n" RESET);
-        return 1;
-    }
 
     if (readConfigFile(configFile, *maester)) {
         asprintf(&msg, "%sERROR | Cannot open file %s%s\n", RED, configFile, RESET);
@@ -96,8 +93,8 @@ int main(int argc, char *argv[]) {
     if (maester->serverSocket >= 0) {
         shutdown(maester->serverSocket, SHUT_RDWR);
     }
+    cleanUpWorkers(maester);
 
-    // Esperar que el thread del servidor acabi (ell tanca el socket)
     pthread_join(serverThreadID, NULL);
 
     asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);

@@ -67,6 +67,13 @@ typedef struct {
 } EnvoyPInfo;
 
 typedef struct {
+    pthread_t *workersThreadID;
+    int numWorkers;
+    int workersCapacity;
+    pthread_mutex_t workers_mutex;
+}WorkersInfo;
+
+typedef struct {
     // Maester information
     char *name;
     char *path;
@@ -86,6 +93,9 @@ typedef struct {
     // Alliances
     Alliance *alliances;
     int numAlliances;
+
+    //Workers info
+    WorkersInfo *workersInfo;
 
     volatile sig_atomic_t running;
 

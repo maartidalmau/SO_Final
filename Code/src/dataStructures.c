@@ -14,11 +14,13 @@ void initMaester(Maester* m) {
     m->numAlliances = 0;
     m->running = 1;
     m->serverSocket = -1;
+    m->workersInfo
     
     // Initialize synchronization primitives
     pthread_mutex_init(&m->routes_mutex, NULL);
     pthread_mutex_init(&m->alliances_mutex, NULL);
     pthread_mutex_init(&m->inventory_mutex, NULL);
+    pthread_mutex_init(&m->workersInfo->workers_mutex, NULL);
     // envoys_sem will be initialized after reading config (with m->envoys value)
 }
 

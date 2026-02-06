@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 
-volatile sig_atomic_t *envoyRunning = NULL;
 
 void rsiShutdownEnvoy() {
     if (envoyRunning) {

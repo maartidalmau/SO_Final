@@ -88,31 +88,20 @@ void *serverThread(void *arg) {
             continue;
         }
         
-        // Crear estructura de argumentos para el worker
         WorkerArgs *workerArgs = malloc(sizeof(WorkerArgs));
-        if (!workerArgs) {
-            customWrite(1, RED "ERROR | Cannot allocate memory for worker\n" RESET);
-            close(clientSocket);
-            continue;
-        }
         
         workerArgs->clientSocket = clientSocket;
         workerArgs->maester = maester;
         workerArgs->clientAddr = clientAddr;
         
-        // Crear worker thread detached (se limpia solo)
         pthread_t workerThreadID;
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         
-        if (pthread_create(&workerThreadID, &attr, workerThread, workerArgs) != 0) {
+        if (pthread_create(&workerThreadID, NULL, workerThread, workerArgs) != 0) {
             customWrite(1, RED "ERROR | Cannot create worker thread\n" RESET);
             close(clientSocket);
             free(workerArgs);
         }
         
-        pthread_attr_destroy(&attr);
     }
 
     close(maester->serverSocket);

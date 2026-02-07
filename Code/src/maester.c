@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #include "dataStructures.h"
 #include "utils.h"
@@ -18,6 +20,11 @@ volatile sig_atomic_t *envoyRunning = NULL;
 void rsiCtrlC() {
     if (running) {
         *running = 0;
+    }
+}
+void rsiShutdownEnvoy() {
+    if (envoyRunning) {
+        *envoyRunning = 0;
     }
 }
 
@@ -48,6 +55,35 @@ int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
     return 0;
 }
 
+int envoysUtilities(Maester *maester, int memid_envoy){
+    memid_envoy = shmget(IPC_PRIVATE, sizeof(volatile sig_atomic_t), IPC_CREAT|IPC_EXCL|0600);
+    if (memid_envoy > 0){
+        envoyRunning = (volatile sig_atomic_t *)shmat(memid_envoy, NULL, 0);
+        *envoyRunning = 1;
+    }else{
+        customWrite(1, RED "ERROR | Cannot create shared memory\n" RESET);
+        return 1;
+    }
+
+    struct sigaction sa2;    
+    memset(&sa2, 0, sizeof(sa2));
+    sa2.sa_handler = rsiShutdownEnvoy;
+    sa2.sa_flags = 0;
+    sigemptyset(&sa2.sa_mask);
+    sigaction(SIGUSR1, &sa2, NULL);
+
+    createEnvoys(maester, envoyRunning);
+
+    struct sigaction sa;    
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = rsiCtrlC;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+    sigaction(SIGINT, &sa, NULL);
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     char *msg;
     if (argc != 3) {
@@ -62,15 +98,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    createEnvoys(maester);
-
-    struct sigaction sa;    
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = rsiCtrlC;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-
-    sigaction(SIGINT, &sa, NULL);
+    int memid_envoy = -1;
+    if (envoysUtilities(maester, memid_envoy)){
+        destroyMaester(maester);
+        return 1;
+    }
 
     // Crear thread del servidor
     pthread_t serverThreadID;
@@ -84,12 +116,17 @@ int main(int argc, char *argv[]) {
         consoleLogic(maester);
     }
     
+    //Apartir de aqui todo es desconexion, liberar memoria y terminar procesos
     notifyDisconnect(maester);
-    
-    customWrite(1, YELLOW "Shutting down Envoys...\n" RESET);
     endAndCleanEnvoys(maester);
 
-    
+    if (envoyRunning != NULL) {
+        shmdt((void*)envoyRunning);
+    }
+    if (memid_envoy > 0) {
+        shmctl(memid_envoy, IPC_RMID, NULL);
+    }
+
     if (maester->serverSocket >= 0) {
         shutdown(maester->serverSocket, SHUT_RDWR);
     }
@@ -102,7 +139,5 @@ int main(int argc, char *argv[]) {
     free(msg);
     
     destroyMaester(maester);
-    maester = NULL;
-
     return 0;
 }

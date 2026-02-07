@@ -1,39 +1,20 @@
 #include "envoy.h"
 
-#include <stdio.h>
-
-
-void rsiShutdownEnvoy() {
-    if (envoyRunning) {
-        *envoyRunning = 0;
-    }
-}
-
 void envoyProcess(Envoy envoy) {
-    struct sigaction sa;    
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = rsiShutdownEnvoy;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGUSR1, &sa, NULL);
 
     //Ignore Ctrl+C
     signal(SIGINT, SIG_IGN);
     
-    envoyRunning = &(envoy.running);
-    envoy.running = 1;
-
-    while(envoy.running) {
+    while(*envoy.running == 1) {
         pause();
     }
-    
     //Close pipes and exit
     close(envoy.p2c);
     close(envoy.c2p);
     exit(0);
 }
 
-void createEnvoys(Maester *maester){
+void createEnvoys(Maester *maester, volatile sig_atomic_t *envoyRunning){
     //We allocate memory for the pipes and the envoy PIDs
     maester->envoyPInfo.p2c = malloc(maester->envoys * sizeof(int*));
     maester->envoyPInfo.c2p = malloc(maester->envoys * sizeof(int*));
@@ -69,6 +50,7 @@ void createEnvoys(Maester *maester){
             Envoy envoy;
             envoy.p2c = maester->envoyPInfo.p2c[i][0];
             envoy.c2p = maester->envoyPInfo.c2p[i][1];
+            envoy.running = envoyRunning;
     
             destroyEnvoys(maester);
             destroyMaester(maester);

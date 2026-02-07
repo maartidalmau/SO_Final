@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "utils.h"
+#include "semaphore_v2.h"
 
 #define ALLIANCE_NONE 0
 #define ALLIANCE_PENDING 1
@@ -21,6 +22,7 @@
 #define ALLIANCE_TIMEOUT_SECONDS 120  // 2 minuts
 
 #define MAX_COMMAND_LENGTH 512
+#define WORKERS_CAPACITY 4
 
 typedef struct {
     char name[100];
@@ -69,7 +71,6 @@ typedef struct {
 typedef struct {
     pthread_t *workersThreadID;
     int numWorkers;
-    int workersCapacity;
     pthread_mutex_t workers_mutex;
 }WorkersInfo;
 
@@ -105,13 +106,16 @@ typedef struct {
     pthread_mutex_t routes_mutex;      // Protects routes[]
     pthread_mutex_t alliances_mutex;   // Protects alliances[]
     pthread_mutex_t inventory_mutex;   // Protects inventory[]
-    sem_t envoys_sem;                  // Limits concurrent outgoing connections
+    semaphore envoys_sem;                  
+
+    semaphore modifyMaesterData;
+    
 } Maester;
 
 typedef struct {
     int p2c;
     int c2p;
-    volatile sig_atomic_t running;
+    volatile sig_atomic_t *running;
 } Envoy;
 
 

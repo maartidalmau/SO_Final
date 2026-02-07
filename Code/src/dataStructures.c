@@ -16,13 +16,15 @@ void initMaester(Maester* m) {
     m->serverSocket = -1;
     m->workersInfo = malloc(sizeof(WorkersInfo));
     m->workersInfo->numWorkers = 0; 
-    m->workersInfo->workersCapacity = 10;
-    m->workersInfo->workersThreadID = malloc(10*sizeof(pthread_t));
+    m->workersInfo->workersThreadID = malloc(4*sizeof(pthread_t));
     
     pthread_mutex_init(&m->routes_mutex, NULL);
     pthread_mutex_init(&m->alliances_mutex, NULL);
     pthread_mutex_init(&m->inventory_mutex, NULL);
     pthread_mutex_init(&m->workersInfo->workers_mutex, NULL);
+    
+    SEM_constructor(&m->envoys_sem);
+    SEM_init(&m->envoys_sem, 1);
 }
 
 void initRoute(Route *r) {
@@ -230,6 +232,8 @@ void destroyMaester(Maester *maester) {
     pthread_mutex_destroy(&maester->workersInfo->workers_mutex);
     safeFree((void**)&maester->workersInfo->workersThreadID);
     safeFree((void**)&maester->workersInfo);
+
+    SEM_destructor(&maester->envoys_sem);
     
     free(maester);
 

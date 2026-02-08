@@ -80,21 +80,11 @@ void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int
     
     // No existe - crear nueva alianza
     Alliance *temp = realloc(maester->alliances, sizeof(Alliance) * (maester->numAlliances + 1));
-    if (!temp) {
-        pthread_mutex_unlock(&maester->alliances_mutex);
-        customWrite(1, RED "ERROR | Cannot allocate memory for alliance\n" RESET);
-        return;
-    }
     
     maester->alliances = temp;
     
     // Inicializar nueva alianza con validación de strdup
     maester->alliances[maester->numAlliances].name = strdup(name);
-    if (!maester->alliances[maester->numAlliances].name) {
-        pthread_mutex_unlock(&maester->alliances_mutex);
-        customWrite(1, RED "ERROR | Cannot allocate memory for alliance name\n" RESET);
-        return;
-    }
     maester->alliances[maester->numAlliances].ip = ip ? strdup(ip) : NULL;
     maester->alliances[maester->numAlliances].port = port;
     maester->alliances[maester->numAlliances].status = status;

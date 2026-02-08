@@ -65,7 +65,6 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
 // ═══════════════════════════════════════════════════════════
 
 void handleDisconnect(Maester *maester, Frame *frame) {
-    char *msg;
     
     // El nom del regne que es desconnecta està al DATA
     const char *disconnectedRealm = frame->data;
@@ -74,10 +73,7 @@ void handleDisconnect(Maester *maester, Frame *frame) {
     if (strlen(disconnectedRealm) == 0) {
         disconnectedRealm = frame->ip_origin;
     }
-    
-    asprintf(&msg, YELLOW "\n[%s] has disconnected gracefully.\n" RESET, disconnectedRealm);
-    customWrite(1, msg);
-    free(msg);
+
     
     // Actualizar estado de alianzas - buscar per nom o per IP:Port
     pthread_mutex_lock(&maester->alliances_mutex);

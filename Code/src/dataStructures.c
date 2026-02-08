@@ -22,9 +22,8 @@ void initMaester(Maester* m) {
     pthread_mutex_init(&m->alliances_mutex, NULL);
     pthread_mutex_init(&m->inventory_mutex, NULL);
     pthread_mutex_init(&m->workersInfo->workers_mutex, NULL);
+    SEM_init(&m->envoys_sem, m->envoys);
     
-    SEM_constructor(&m->envoys_sem);
-    SEM_init(&m->envoys_sem, 1);
 }
 
 void initRoute(Route *r) {
@@ -55,7 +54,7 @@ int readConfigFile(char *filename, Maester *maester) {
     safeFree((void**)&aux);
     
     // Initialize envoys semaphore with the number of available envoys
-    sem_init(&maester->envoys_sem, 0, maester->envoys);
+    SEM_constructor(&maester->envoys_sem);
 
     //Read ip var
     customRead(fd, &(maester->ip), '\n');
@@ -227,13 +226,13 @@ void destroyMaester(Maester *maester) {
     pthread_mutex_destroy(&maester->routes_mutex);
     pthread_mutex_destroy(&maester->alliances_mutex);
     pthread_mutex_destroy(&maester->inventory_mutex);
-    sem_destroy(&maester->envoys_sem);
-
     pthread_mutex_destroy(&maester->workersInfo->workers_mutex);
+    
+    SEM_destructor(&maester->envoys_sem);
+  
     safeFree((void**)&maester->workersInfo->workersThreadID);
     safeFree((void**)&maester->workersInfo);
 
-    SEM_destructor(&maester->envoys_sem);
     
     free(maester);
 

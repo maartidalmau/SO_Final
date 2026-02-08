@@ -4,9 +4,9 @@ Riverrun
 192.168.1.5
 8399
 --- ROUTES ---
-DEFAULT 192.168.1.5 8163
+DEFAULT 192.168.1.5 8398
 Dragonstone *.*.*.* 0
 KingsLanding *.*.*.* 0
 TheVale *.*.*.* 0
-Driftmark 192.168.1.5 8163
+Driftmark 192.168.1.5 8398
 FakeRealm *.*.*.* 0

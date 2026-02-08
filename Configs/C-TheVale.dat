@@ -4,8 +4,8 @@ TheVale
 192.168.1.4
 8397
 --- ROUTES ---
-DEFAULT 192.168.1.4 8161
+DEFAULT 192.168.1.4 8396
 Dragonstone *.*.*.* 0
-KingsLanding 192.168.1.4 8161
+KingsLanding 192.168.1.4 8396
 Driftmark *.*.*.* 0
 Riverrun *.*.*.* 0

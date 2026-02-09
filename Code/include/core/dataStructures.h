@@ -72,7 +72,7 @@ typedef struct {
     pthread_t *workersThreadID;
     int numWorkers;
     pthread_mutex_t workers_mutex;
-}WorkersInfo;
+} WorkersInfo;
 
 typedef struct {
     // Maester information
@@ -116,6 +116,7 @@ typedef struct {
     int p2c;
     int c2p;
     volatile sig_atomic_t *running;
+    semaphore envoys_sem;
 } Envoy;
 
 

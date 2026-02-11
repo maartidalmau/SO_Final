@@ -1,8 +1,8 @@
 CFLAGS = -Wextra -Wall -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
 LDFLAGS = -lpthread
 
-maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o semaphore_v2.o
-	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o semaphore_v2.o -o Maester $(CFLAGS) $(LDFLAGS)
+maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o
+	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o -o Maester $(CFLAGS) $(LDFLAGS)
 
 maester.o: src/maester.c include/core/dataStructures.h include/core/utils.h include/console/console.h include/network/server.h include/network/client.h include/network/envoy.h
 	gcc -c -g src/maester.c -o maester.o $(CFLAGS)
@@ -45,6 +45,9 @@ network_client.o: src/network/transport/client.c include/network/client.h includ
 
 network_router.o: src/network/transport/router.c include/network/router.h include/network/network.h include/core/utils.h
 	gcc -c -g src/network/transport/router.c -o network_router.o $(CFLAGS)
+
+network_ipc.o: src/network/transport/ipc.c include/network/ipc.h include/network/network.h include/core/dataStructures.h
+	gcc -c -g src/network/transport/ipc.c -o network_ipc.o $(CFLAGS)
 
 semaphore_v2.o: src/semaphore_v2.c include/core/semaphore_v2.h
 	gcc -c -g src/semaphore_v2.c -o semaphore_v2.o $(CFLAGS)

@@ -23,6 +23,7 @@ void initMaester(Maester* m) {
     pthread_mutex_init(&m->inventory_mutex, NULL);
     pthread_mutex_init(&m->workersInfo->workers_mutex, NULL);
     SEM_init(&m->envoys_sem, m->envoys);
+    SEM_init(&m->modifyMaesterData, 1);
     
 }
 
@@ -55,6 +56,7 @@ int readConfigFile(char *filename, Maester *maester) {
     
     // Initialize envoys semaphore with the number of available envoys
     SEM_constructor(&maester->envoys_sem);
+    SEM_constructor(&maester->modifyMaesterData);
 
     //Read ip var
     customRead(fd, &(maester->ip), '\n');

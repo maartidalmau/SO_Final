@@ -16,6 +16,7 @@
 
 volatile sig_atomic_t *running = NULL;
 volatile sig_atomic_t *envoyRunning = NULL;
+volatile sig_atomic_t requestingEnvoyID = -1;
 
 void rsiCtrlC() {
     if (running) {
@@ -26,6 +27,10 @@ void rsiShutdownEnvoy() {
     if (envoyRunning) {
         *envoyRunning = 0;
     }
+}
+
+void rsiEnvoyRequestData(){
+    //requestingEnvoyID 
 }
 
 int reserveMemoryEnvoysAvailable(Maester *maester) {
@@ -100,8 +105,16 @@ int envoysUtilities(Maester *maester, int memid_envoy){
     sa.sa_handler = rsiCtrlC;
     sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
-
     sigaction(SIGINT, &sa, NULL);
+
+    //Signal per comunicar a maester que un envoy li està demanant dades
+    struct sigaction sa3;
+    memset(&sa3, 0, sizeof(sa3));
+    sa3.sa_handler = rsiEnvoyRequestData;
+    sa3.sa_flags = 0;
+    sigemptyset(&sa3.sa_mask);
+    sigaction(SIGUSR2, &sa3, NULL);
+    
     return 0;
 }
 

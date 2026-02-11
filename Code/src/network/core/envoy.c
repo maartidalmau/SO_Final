@@ -66,3 +66,29 @@ void createEnvoys(Maester *maester, volatile sig_atomic_t *envoyRunning){
         }
     }
 }
+
+int reserveEnvoy(Maester *maester) {
+    int chosenEnvoy = -1;
+
+    //We need to wait for the semaphore to ensure that we are not modifying the envoysAvailable array while it is being read by another thread or process
+    SEM_wait(&maester->envoys_sem);
+
+    //Reserve an available envoy
+    for (int i = 0; i < maester->envoys; i++) {
+        if (maester->envoysAvailable[i] == 1) {
+            maester->envoysAvailable[i] = 0;
+            chosenEnvoy = i;
+            break;
+        }
+    }
+
+    if (chosenEnvoy != -1) {
+        //We signal the semaphore to allow other threads or processes to access the envoysAvailable array
+        SEM_signal(&maester->envoys_sem);
+        return 1;
+    }
+
+    //We signal the semaphore to allow other threads or processes to access the envoysAvailable array
+    SEM_signal(&maester->envoys_sem);
+    return 0;
+}

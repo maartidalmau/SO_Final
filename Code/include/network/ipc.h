@@ -13,6 +13,8 @@
 int serializeMaesterData(Maester *maester, uint8_t *buffer, int bufferSize);
 int deserializeMaesterData(uint8_t *buffer, int bufferSize, Maester *maester);
 
+void updateMaesterDataFromEnvoy(Maester *maester, Maester *receivedData);
+
 void passDataToEnvoy(Maester *maester, int envoyIndex);
 void getDataFromEnvoy(Maester *maester, int envoyIndex, Maester *receivedData);
 

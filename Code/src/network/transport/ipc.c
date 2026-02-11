@@ -17,16 +17,15 @@ void passDataToEnvoy(Maester *maester, int envoyIndex) {
     free(buffer);
 }
 
-// Lee datos modificados del Envoy (inventario y alianzas)
-void getDataFromEnvoy(Maester *maester, int envoyIndex, Maester *receivedData) {
+// Recibe datos del Envoy en el Maester
+void getDataFromMaester(Envoy envoy, Maester *receivedData) {
     uint32_t size;
-    read(maester->envoyPInfo.c2p[envoyIndex][0], &size, sizeof(uint32_t));
+    read(envoy.p2c, &size, sizeof(uint32_t));
     
     uint8_t *buffer = malloc(size);
-    read(maester->envoyPInfo.c2p[envoyIndex][0], buffer, size);
+    read(envoy.p2c, buffer, size);
     
     deserializeMaesterData(buffer, size, receivedData);
-    SEM_signal(&maester->modifyMaesterData);
     free(buffer);
 }
 
@@ -42,15 +41,19 @@ void passDataToMaester(Envoy envoy, Maester *maester) {
     free(buffer);
 }
 
-// Recibe datos del Envoy en el Maester
-void getDataFromMaester(Envoy envoy, Maester *receivedData) {
+// Lee datos modificados del Envoy (inventario y alianzas)
+void getDataFromEnvoy(Maester *maester, int envoyIndex, Maester *receivedData) {
     uint32_t size;
-    read(envoy.p2c, &size, sizeof(uint32_t));
+    read(maester->envoyPInfo.c2p[envoyIndex][0], &size, sizeof(uint32_t));
     
     uint8_t *buffer = malloc(size);
-    read(envoy.p2c, buffer, size);
+    read(maester->envoyPInfo.c2p[envoyIndex][0], buffer, size);
     
     deserializeMaesterData(buffer, size, receivedData);
+    //actualizar struct del maester con los datos recibidos
+    updateMaesterDataFromEnvoy(maester, receivedData);
+
+    SEM_signal(&maester->modifyMaesterData);
     free(buffer);
 }
 
@@ -104,4 +107,16 @@ int deserializeMaesterData(uint8_t *buffer, int bufferSize, Maester *maester) {
     }
     
     return offset;
+}
+
+void updateMaesterDataFromEnvoy(Maester *maester, Maester *receivedData) {
+    // Actualizar cantidades de productos
+    for (int i = 0; i < maester->numProducts && i < receivedData->numProducts; i++) {
+        maester->inventory[i].amount = receivedData->inventory[i].amount;
+    }
+    
+    // Actualizar status de alianzas
+    for (int i = 0; i < maester->numAlliances && i < receivedData->numAlliances; i++) {
+        maester->alliances[i].status = receivedData->alliances[i].status;
+    }
 }

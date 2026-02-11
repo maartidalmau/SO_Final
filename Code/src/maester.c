@@ -28,6 +28,27 @@ void rsiShutdownEnvoy() {
     }
 }
 
+int reserveMemoryEnvoysAvailable(Maester *maester) {
+    int memid = shmget(IPC_PRIVATE, sizeof(int) * maester->envoys, IPC_CREAT | IPC_EXCL| 0600);
+    if (memid < 0) {
+        return 1;
+    }
+
+    maester->envoysAvailable = shmat(memid, NULL, 0);
+    if (maester->envoysAvailable == (void*)-1) {
+        shmctl(memid, IPC_RMID, NULL);
+        return 1;
+    }
+    return 0;
+}
+
+void destroyEnvoysAvailable(Maester *maester) {
+    if (maester->envoysAvailable) {
+        shmdt((void*)maester->envoysAvailable);
+        maester->envoysAvailable = NULL;
+    }
+}
+
 int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
     char *msg;
     *maester = malloc(sizeof(Maester));

@@ -30,36 +30,21 @@ int reserveEnvoy(Maester *maester) {
 }
 
 /*
-Aquestes 4 funcions d'abaix permeten enviar i rebre dades entre el maester i el envoy.
-*/
-
-void passDataToEnvoy(Maester *maester, int envoyIndex, char *data) {
-    customWrite(maester->envoyPInfo.p2c[envoyIndex][1], data);
-}
-
-void getDataFromEnvoy(Maester *maester, int envoyIndex, char **buffer) {
-    customRead(maester->envoyPInfo.c2p[envoyIndex][0], buffer, '\n');
-}
-
-void passDataToMaester(Envoy envoy, char *data) {
-    customWrite(envoy.c2p, data);
-}
-
-void getDataFromMaester(Envoy envoy, char **buffer) {
-    customRead(envoy.p2c, buffer, '\n');
-/*
 Aquestes funcions crean i destruixene memoria compartida per envoysAvailable, s'ha de moure al maester i cridarla al iniciar el maester
 */
 
 int reserveMemoryEnvoysAvailable(Maester *maester) {
     int memid = shmget(IPC_PRIVATE, sizeof(int) * maester->envoys, IPC_CREAT | IPC_EXCL| 0600);
     if (memid < 0) {
-        return memid;
+        return 1;
     }
 
     maester->envoysAvailable = shmat(memid, NULL, 0);
     if (maester->envoysAvailable == (void*)-1) {
-        return -1;
+        shmctl(memid, IPC_RMID, NULL);
+        return 1;
+    }
+    return 0;
 }
 
 void destroyEnvoysAvailable(Maester *maester) {

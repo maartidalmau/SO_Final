@@ -106,7 +106,9 @@ typedef struct {
     pthread_mutex_t routes_mutex;      // Protects routes[]
     pthread_mutex_t alliances_mutex;   // Protects alliances[]
     pthread_mutex_t inventory_mutex;   // Protects inventory[]
-    semaphore envoys_sem;                  
+
+    semaphore envoys_sem;
+    int *envoysAvailable;            
 
     semaphore modifyMaesterData;
     
@@ -116,10 +118,10 @@ typedef struct {
     int p2c;
     int c2p;
     volatile sig_atomic_t *running;
+
     semaphore envoys_sem;
+    int *envoysAvailable;
 } Envoy;
-
-
 
 int readConfigFile(char *filename, Maester *maester);
 

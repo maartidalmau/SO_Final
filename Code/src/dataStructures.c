@@ -1,4 +1,5 @@
 #include "dataStructures.h"
+#include "ipc.h"
 
 void initMaester(Maester* m) {
     m->name = NULL;
@@ -14,6 +15,10 @@ void initMaester(Maester* m) {
     m->numAlliances = 0;
     m->running = 1;
     m->serverSocket = -1;
+    m->envoysAvailable = NULL;
+    m->envoyMissions = NULL;
+    m->remoteCatalogs = NULL;
+    m->numRemoteCatalogs = 0;
     m->workersInfo = malloc(sizeof(WorkersInfo));
     m->workersInfo->numWorkers = 0; 
     m->workersInfo->workersThreadID = malloc(4*sizeof(pthread_t));
@@ -22,9 +27,22 @@ void initMaester(Maester* m) {
     pthread_mutex_init(&m->alliances_mutex, NULL);
     pthread_mutex_init(&m->inventory_mutex, NULL);
     pthread_mutex_init(&m->workersInfo->workers_mutex, NULL);
-    SEM_init(&m->envoys_sem, m->envoys);
-    SEM_init(&m->modifyMaesterData, 1);
-    
+}
+
+static void freeRemoteCatalog(RemoteCatalog *catalog) {
+    if (!catalog) {
+        return;
+    }
+
+    safeFree((void **)&catalog->realm);
+    if (catalog->products) {
+        for (int i = 0; i < catalog->numProducts; i++) {
+            safeFree((void **)&catalog->products[i]);
+        }
+        free(catalog->products);
+        catalog->products = NULL;
+    }
+    catalog->numProducts = 0;
 }
 
 void initRoute(Route *r) {
@@ -54,10 +72,6 @@ int readConfigFile(char *filename, Maester *maester) {
     maester->envoys = atoi(aux);
     safeFree((void**)&aux);
     
-    // Initialize envoys semaphore with the number of available envoys
-    SEM_constructor(&maester->envoys_sem);
-    SEM_constructor(&maester->modifyMaesterData);
-
     //Read ip var
     customRead(fd, &(maester->ip), '\n');
 
@@ -229,11 +243,22 @@ void destroyMaester(Maester *maester) {
     pthread_mutex_destroy(&maester->alliances_mutex);
     pthread_mutex_destroy(&maester->inventory_mutex);
     pthread_mutex_destroy(&maester->workersInfo->workers_mutex);
-    
-    SEM_destructor(&maester->envoys_sem);
   
     safeFree((void**)&maester->workersInfo->workersThreadID);
     safeFree((void**)&maester->workersInfo);
+    safeFree((void**)&maester->envoysAvailable);
+    if (maester->envoyMissions) {
+        for (int i = 0; i < maester->envoys; i++) {
+            safeFree((void **)&maester->envoyMissions[i]);
+        }
+        free(maester->envoyMissions);
+    }
+    if (maester->remoteCatalogs) {
+        for (int i = 0; i < maester->numRemoteCatalogs; i++) {
+            freeRemoteCatalog(&maester->remoteCatalogs[i]);
+        }
+        free(maester->remoteCatalogs);
+    }
 
     
     free(maester);
@@ -276,13 +301,80 @@ void destroyEnvoys(Maester *maester) {
     free(maester->envoyPInfo.envoyPIDs);
 }
 
+RemoteCatalog *findRemoteCatalog(Maester *maester, const char *realmName) {
+    if (!maester || !realmName) {
+        return NULL;
+    }
+
+    for (int i = 0; i < maester->numRemoteCatalogs; i++) {
+        if (strcasecmp(maester->remoteCatalogs[i].realm, realmName) == 0) {
+            return &maester->remoteCatalogs[i];
+        }
+    }
+
+    return NULL;
+}
+
+int updateRemoteCatalog(Maester *maester, const char *realmName, const char *serializedProducts) {
+    if (!maester || !realmName || !serializedProducts) {
+        return -1;
+    }
+
+    RemoteCatalog *catalog = findRemoteCatalog(maester, realmName);
+    if (!catalog) {
+        RemoteCatalog *tmp = realloc(maester->remoteCatalogs, sizeof(RemoteCatalog) * (maester->numRemoteCatalogs + 1));
+        if (!tmp) {
+            return -1;
+        }
+        maester->remoteCatalogs = tmp;
+        catalog = &maester->remoteCatalogs[maester->numRemoteCatalogs];
+        catalog->realm = strdup(realmName);
+        catalog->products = NULL;
+        catalog->numProducts = 0;
+        maester->numRemoteCatalogs++;
+    } else {
+        freeRemoteCatalog(catalog);
+        catalog->realm = strdup(realmName);
+    }
+
+    char *copy = strdup(serializedProducts);
+    char *cursor = copy;
+    char *token = NULL;
+
+    while (copy && (token = strsep(&cursor, "|")) != NULL) {
+        if (*token == '\0') {
+            continue;
+        }
+        char **products = realloc(catalog->products, sizeof(char *) * (catalog->numProducts + 1));
+        if (!products) {
+            free(copy);
+            return -1;
+        }
+        catalog->products = products;
+        catalog->products[catalog->numProducts] = strdup(token);
+        if (!catalog->products[catalog->numProducts]) {
+            free(copy);
+            return -1;
+        }
+        catalog->numProducts++;
+    }
+
+    free(copy);
+    return 0;
+}
+
 void endAndCleanEnvoys(Maester *maester) {
-    for (int i = 0; i<maester->envoys;i++){
-        kill(maester->envoyPInfo.envoyPIDs[i], SIGUSR1);
+    for (int i = 0; i < maester->envoys; i++) {
+        IpcRequest request;
+        memset(&request, 0, sizeof(IpcRequest));
+        request.type = IPC_SHUTDOWN;
+        sendIpcRequest(maester->envoyPInfo.p2c[i][1], &request);
     }
 
     for (int i = 0; i < maester->envoys; i++) {
         waitpid(maester->envoyPInfo.envoyPIDs[i], NULL, 0);
+        close(maester->envoyPInfo.p2c[i][1]);
+        close(maester->envoyPInfo.c2p[i][0]);
         free(maester->envoyPInfo.p2c[i]);
         free(maester->envoyPInfo.c2p[i]);
     }

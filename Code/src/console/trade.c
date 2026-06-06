@@ -1,5 +1,13 @@
 #include "trade.h"
 
+static RemoteCatalog *getTradeCatalog(Trade *trade, Maester *maester) {
+    if (!trade || !maester) {
+        return NULL;
+    }
+
+    return findRemoteCatalog(maester, trade->kingdom);
+}
+
 int isProductInInventory(char *productName, Maester *maester) {
     if (!productName || !maester) {
         return 0;
@@ -10,6 +18,20 @@ int isProductInInventory(char *productName, Maester *maester) {
             return 1;
         }
     }
+    return 0;
+}
+
+static int isProductInRemoteCatalog(char *productName, RemoteCatalog *catalog) {
+    if (!productName || !catalog) {
+        return 0;
+    }
+
+    for (int i = 0; i < catalog->numProducts; i++) {
+        if (strcasecmp(catalog->products[i], productName) == 0) {
+            return 1;
+        }
+    }
+
     return 0;
 }
 
@@ -194,7 +216,13 @@ int handleAddCommand(Trade *trade, char *productName, int quantity, Maester *mae
         return trade->numProducts;
     }
 
-    if (!isProductInInventory(productName, maester)) {
+    RemoteCatalog *catalog = getTradeCatalog(trade, maester);
+    if (catalog) {
+        if (!isProductInRemoteCatalog(productName, catalog)) {
+            customWrite(1, RED "Product not in remote catalog.\n" RESET);
+            return trade->numProducts;
+        }
+    } else if (!isProductInInventory(productName, maester)) {
         customWrite(1, RED "Product not in inventory.\n" RESET);
         return trade->numProducts;
     }
@@ -258,6 +286,26 @@ void displayAvailableProducts(Maester *maester) {
     customWrite(1, ".\n");
 }
 
+static void displayTradeCatalog(Trade *trade, Maester *maester) {
+    RemoteCatalog *catalog = getTradeCatalog(trade, maester);
+    if (!catalog || catalog->numProducts == 0) {
+        customWrite(1, YELLOW "No products available. Use LIST PRODUCTS first.\n" RESET);
+        return;
+    }
+
+    customWrite(1, YELLOW "Available products: " RESET);
+    for (int i = 0; i < catalog->numProducts; i++) {
+        char *msg;
+        asprintf(&msg, "%s%s%s", CYAN, catalog->products[i], RESET);
+        customWrite(1, msg);
+        free(msg);
+        if (i < catalog->numProducts - 1) {
+            customWrite(1, YELLOW ", " RESET);
+        }
+    }
+    customWrite(1, ".\n");
+}
+
 void startTrade(Trade *trade, Maester *maester) {
     if (!trade || !maester) return;
     
@@ -275,7 +323,11 @@ void startTrade(Trade *trade, Maester *maester) {
     customWrite(1, msg);
     free(msg);
 
-    displayAvailableProducts(maester);
+    if (getTradeCatalog(trade, maester) != NULL) {
+        displayTradeCatalog(trade, maester);
+    } else {
+        displayAvailableProducts(maester);
+    }
 
     while (!exit && maester->running) {
         customWrite(1, GREEN "(trade)> " RESET);

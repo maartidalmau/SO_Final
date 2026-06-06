@@ -7,12 +7,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <time.h>
 #include <stdint.h>
 
 #include "utils.h"
-#include "semaphore_v2.h"
 
 #define ALLIANCE_NONE 0
 #define ALLIANCE_PENDING 1
@@ -63,6 +61,12 @@ typedef struct {
 } Trade;
 
 typedef struct {
+    char *realm;
+    char **products;
+    int numProducts;
+} RemoteCatalog;
+
+typedef struct {
     int **p2c;
     int **c2p;
     pid_t *envoyPIDs;
@@ -107,20 +111,17 @@ typedef struct {
     pthread_mutex_t alliances_mutex;   // Protects alliances[]
     pthread_mutex_t inventory_mutex;   // Protects inventory[]
 
-    semaphore envoys_sem;
     int *envoysAvailable;            
+    char **envoyMissions;
 
-    semaphore modifyMaesterData;
+    RemoteCatalog *remoteCatalogs;
+    int numRemoteCatalogs;
     
 } Maester;
 
 typedef struct {
     int p2c;
     int c2p;
-    volatile sig_atomic_t *running;
-
-    semaphore envoys_sem;
-    int *envoysAvailable;
 } Envoy;
 
 int readConfigFile(char *filename, Maester *maester);
@@ -134,5 +135,9 @@ void freeTrade(Trade **trade);
 void destroyEnvoys(Maester *maester);
 
 void endAndCleanEnvoys(Maester *maester);
+
+RemoteCatalog *findRemoteCatalog(Maester *maester, const char *realmName);
+
+int updateRemoteCatalog(Maester *maester, const char *realmName, const char *serializedProducts);
 
 #endif

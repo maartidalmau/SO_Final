@@ -1,4 +1,150 @@
 #include "client.h"
+#include "envoy.h"
+
+static int connectForRequest(const IpcRequest *request, int *fd_out) {
+    return connectToRealmByRoute(request->target_ip, (int)request->target_port, fd_out);
+}
+
+static void fillBasicError(IpcResponse *response, const char *message) {
+    response->status = IPC_STATUS_ERROR;
+    response->result_code = -1;
+    if (message) {
+        strncpy(response->payload, message, IPC_PAYLOAD_SIZE - 1);
+    }
+}
+
+static int extractProductPayload(const IpcResponse *response, char *realmName, size_t realmNameSize, char *products, size_t productsSize) {
+    char *copy;
+    char *cursor;
+    char *status;
+    char *realm;
+    char *productList;
+
+    if (!response || !realmName || !products) {
+        return -1;
+    }
+
+    copy = strdup(response->payload);
+    if (!copy) {
+        return -1;
+    }
+
+    cursor = copy;
+    status = strsep(&cursor, "&");
+    realm = strsep(&cursor, "&");
+    productList = cursor;
+
+    if (!status || !realm || !productList || strcmp(status, "OK") != 0) {
+        free(copy);
+        return -1;
+    }
+
+    strncpy(realmName, realm, realmNameSize - 1);
+    realmName[realmNameSize - 1] = '\0';
+    strncpy(products, productList, productsSize - 1);
+    products[productsSize - 1] = '\0';
+    free(copy);
+    return 0;
+}
+
+int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
+    int fd_nextHop = -1;
+    if (connectForRequest(request, &fd_nextHop) < 0) {
+        fillBasicError(response, "Cannot connect to route");
+        return -1;
+    }
+
+    char origin[IP_SIZE];
+    char frameData[DATA_MAX_SIZE];
+    snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
+    snprintf(frameData, DATA_MAX_SIZE, "%s&%s&0&00000000000000000000000000000000",
+             request->source_realm, request->path);
+
+    Frame requestFrame;
+    createFrame(&requestFrame, ALLIANCE_REQUEST, origin, request->target_realm, frameData);
+
+    if (sendFrame(fd_nextHop, &requestFrame) < 0) {
+        close(fd_nextHop);
+        fillBasicError(response, "Failed to send alliance request");
+        return -1;
+    }
+
+    close(fd_nextHop);
+    response->status = IPC_STATUS_OK;
+    response->result_code = 0;
+    return 0;
+}
+
+int envoySendAllianceResponse(const IpcRequest *request, IpcResponse *response) {
+    int fd_dest = -1;
+    if (connectForRequest(request, &fd_dest) < 0) {
+        fillBasicError(response, "Cannot connect to requester");
+        return -1;
+    }
+
+    char origin[IP_SIZE];
+    char responseData[DATA_MAX_SIZE];
+    snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
+    snprintf(responseData, DATA_MAX_SIZE, "%s&%s",
+             request->aux_value ? "ACCEPT" : "REJECT", request->source_realm);
+
+    Frame responseFrame;
+    createFrame(&responseFrame, ALLIANCE_RESPONSE, origin, request->target_realm, responseData);
+
+    if (sendFrame(fd_dest, &responseFrame) < 0) {
+        close(fd_dest);
+        fillBasicError(response, "Failed to send alliance response");
+        return -1;
+    }
+
+    Frame ackFrame;
+    if (receiveFrame(fd_dest, &ackFrame) < 0) {
+        close(fd_dest);
+        fillBasicError(response, "No ACK received");
+        return -1;
+    }
+
+    close(fd_dest);
+    response->status = (ackFrame.type == ACK_FILE) ? IPC_STATUS_OK : IPC_STATUS_REMOTE_ERROR;
+    response->frame_type = ackFrame.type;
+    response->result_code = (ackFrame.type == ACK_FILE) ? 0 : -1;
+    strncpy(response->payload, ackFrame.data, IPC_PAYLOAD_SIZE - 1);
+    return (ackFrame.type == ACK_FILE) ? 0 : -1;
+}
+
+int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response) {
+    int fd_dest = -1;
+    if (connectForRequest(request, &fd_dest) < 0) {
+        fillBasicError(response, "Cannot connect to target realm");
+        return -1;
+    }
+
+    char origin[IP_SIZE];
+    snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
+
+    Frame requestFrame;
+    createFrame(&requestFrame, PRODUCT_LIST_REQUEST, origin, request->target_realm, request->source_realm);
+
+    if (sendFrame(fd_dest, &requestFrame) < 0) {
+        close(fd_dest);
+        fillBasicError(response, "Failed to send product list request");
+        return -1;
+    }
+
+    Frame responseFrame;
+    if (receiveFrame(fd_dest, &responseFrame) < 0) {
+        close(fd_dest);
+        fillBasicError(response, "No response from target realm");
+        return -1;
+    }
+
+    close(fd_dest);
+    response->frame_type = responseFrame.type;
+    response->result_code = (responseFrame.type == ACK_FILE) ? 0 : -1;
+    response->status = (responseFrame.type == ACK_FILE) ? IPC_STATUS_OK : IPC_STATUS_REMOTE_ERROR;
+    strncpy(response->payload, responseFrame.data, IPC_PAYLOAD_SIZE - 1);
+    return (responseFrame.type == ACK_FILE) ? 0 : -1;
+}
 
 
 int sendAllianceRequest(Maester *maester, const char *realmName, const char *sigilPath) {
@@ -6,8 +152,6 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
         return -1;
     }
     char *msg;
-    
-    // 1. Verificar que no tenim ja aliança activa amb aquest regne (thread-safe)
     int existingStatus = ALLIANCE_NONE;
     if (getAllianceInfo(maester, realmName, NULL, NULL, &existingStatus, NULL)) {
         if (existingStatus == ALLIANCE_ACTIVE) {
@@ -23,14 +167,11 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
             return 0;
         }
     }
-    
-    // 2. Buscar ruta al regne (directa o via DEFAULT) - thread-safe
+
     char *routeIp = NULL;
     int routePort = 0;
-    
     if (!getRouteInfo(maester, realmName, &routeIp, &routePort) || 
         (routeIp && strcasecmp(routeIp, "*.*.*.*") == 0)) {
-        // No direct route or unknown IP, try DEFAULT
         if (routeIp) free(routeIp);
         routeIp = NULL;
         if (!getRouteInfo(maester, NULL, &routeIp, &routePort)) {
@@ -47,50 +188,41 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
         free(msg);
         return -1;
     }
-    
-    // 3. Connectar al següent hop
-    int fd_nextHop = -1;
-    if (connectToRealmByRoute(routeIp, routePort, &fd_nextHop) < 0) {
-        asprintf(&msg, RED "ERROR | Cannot connect to route for [%s]\n" RESET, realmName);
+
+    int envoyIndex = reserveEnvoy(maester);
+    if (envoyIndex < 0) {
+        asprintf(&msg, RED "ERROR | No envoys available\n" RESET);
         customWrite(1, msg);
         free(msg);
         free(routeIp);
         return -1;
     }
-    
-    free(routeIp);  // Ya no necesitamos la IP
-    
-    // 4. Crear la trama ALLIANCE_REQUEST (TYPE 0x01)
-    // Format DATA: <RealmName>&<SigilName>&<FileSize>&<MD5SUM>
-    // Per F2: posem valors placeholder per FileSize i MD5SUM (no enviem fitxer)
-    char myOrigin[IP_SIZE];
-    snprintf(myOrigin, IP_SIZE, "%s:%d", maester->ip, maester->port);
-    
-    char frameData[DATA_MAX_SIZE];
-    snprintf(frameData, DATA_MAX_SIZE, "%s&%s&0&00000000000000000000000000000000", 
-             maester->name, sigilPath);
-    
-    Frame requestFrame;
-    createFrame(&requestFrame, ALLIANCE_REQUEST, myOrigin, realmName, frameData);
-    
-    // 5. Enviar la trama
-    if (sendFrame(fd_nextHop, &requestFrame) < 0) {
+
+    IpcRequest request;
+    IpcResponse response;
+    memset(&request, 0, sizeof(IpcRequest));
+    request.type = IPC_PLEDGE_REQUEST;
+    strncpy(request.source_realm, maester->name, IPC_REALM_SIZE - 1);
+    strncpy(request.source_ip, maester->ip, IPC_IP_SIZE - 1);
+    request.source_port = (uint32_t)maester->port;
+    strncpy(request.target_realm, realmName, IPC_REALM_SIZE - 1);
+    strncpy(request.target_ip, routeIp, IPC_IP_SIZE - 1);
+    request.target_port = (uint32_t)routePort;
+    strncpy(request.path, sigilPath, IPC_PATH_SIZE - 1);
+    asprintf(&msg, "PLEDGE to %s", realmName);
+    setEnvoyMission(maester, envoyIndex, msg);
+    free(msg);
+
+    free(routeIp);
+
+    if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) < 0 || response.status != IPC_STATUS_OK) {
         asprintf(&msg, RED "ERROR | Failed to send alliance request to [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
-        close(fd_nextHop);
+        releaseEnvoy(maester, envoyIndex);
         return -1;
     }
-    
-    // 6. Tancar connexió immediatament (NO BLOQUEJANT - no esperem resposta aquí)
-    close(fd_nextHop);
-    
-    // 7. Crear aliança com a PENDING amb timestamp
     addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_PENDING);
-    
-    // La resposta arribarà pel servidor i serà processada per handleAllianceResponse()
-    // El timeout es comprova quan rebem la resposta (si han passat > 120s → FAILED)
-    
     return 0;
 }
 
@@ -135,64 +267,32 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
         if (savedIp) free(savedIp);
         return -1;
     }
-    
-    // 3. Connectar directament a la IP:Port del sol·licitant
-    int fd_dest = -1;
-    if (connectToRealmByRoute(savedIp, savedPort, &fd_dest) < 0) {
-        asprintf(&msg, RED "ERROR | Cannot connect to [%s] at %s:%d\n" RESET, 
-                 realmName, savedIp, savedPort);
+    int envoyIndex = reserveEnvoy(maester);
+    if (envoyIndex < 0) {
+        asprintf(&msg, RED "ERROR | No envoys available\n" RESET);
         customWrite(1, msg);
         free(msg);
         free(savedIp);
         return -1;
     }
-    
-    // 4. Crear trama ALLIANCE_RESPONSE (0x03)
-    // ORIGIN: IP:Port nostre (per que ell sàpiga com connectar-se directament)
-    // DESTINATION: Nom del regne que va demanar l'aliança
-    // DATA: ACCEPT/REJECT&<NomNostre>
-    char myOrigin[IP_SIZE];
-    snprintf(myOrigin, IP_SIZE, "%s:%d", maester->ip, maester->port);
-    
-    char responseData[DATA_MAX_SIZE];
-    snprintf(responseData, DATA_MAX_SIZE, "%s&%s", 
-             accept ? "ACCEPT" : "REJECT", maester->name);
-    
-    Frame responseFrame;
-    createFrame(&responseFrame, ALLIANCE_RESPONSE, myOrigin, realmName, responseData);
-    
-    // 5. Enviar la trama
-    if (sendFrame(fd_dest, &responseFrame) < 0) {
-        asprintf(&msg, RED "ERROR | Failed to send alliance response\n" RESET);
-        customWrite(1, msg);
-        free(msg);
-        close(fd_dest);
-        free(savedIp);
-        return -1;
-    }
-    
-    // 6. Esperar ACK (0x31) o NACK (0x69) del sol·licitant
-    Frame ackFrame;
-    if (receiveFrame(fd_dest, &ackFrame) < 0) {
-        asprintf(&msg, YELLOW "WARNING | No ACK received from [%s]\n" RESET, realmName);
-        customWrite(1, msg);
-        free(msg);
-        close(fd_dest);
-        // Actualitzem estat igualment (optimista)
-        if (accept) {
-            addOrUpdateAlliance(maester, realmName, savedIp, savedPort, ALLIANCE_ACTIVE);
-        } else {
-            addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_NONE);
-        }
-        free(savedIp);
-        return 0;
-    }
-    
-    close(fd_dest);
-    
-    // 8. Processar resposta i actualitzar estat
-    if (ackFrame.type == ACK_FILE) {
-        // L'altre ha confirmat recepció a temps
+
+    IpcRequest request;
+    IpcResponse response;
+    memset(&request, 0, sizeof(IpcRequest));
+    request.type = IPC_PLEDGE_RESPOND;
+    request.aux_value = (uint32_t)accept;
+    strncpy(request.source_realm, maester->name, IPC_REALM_SIZE - 1);
+    strncpy(request.source_ip, maester->ip, IPC_IP_SIZE - 1);
+    request.source_port = (uint32_t)maester->port;
+    strncpy(request.target_realm, realmName, IPC_REALM_SIZE - 1);
+    strncpy(request.target_ip, savedIp, IPC_IP_SIZE - 1);
+    request.target_port = (uint32_t)savedPort;
+    asprintf(&msg, "PLEDGE RESPOND to %s", realmName);
+    setEnvoyMission(maester, envoyIndex, msg);
+    free(msg);
+
+    if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) == 0 &&
+        response.status == IPC_STATUS_OK) {
         if (accept) {
             addOrUpdateAlliance(maester, realmName, savedIp, savedPort, ALLIANCE_ACTIVE);
             asprintf(&msg, GREEN "Alliance with %s established.\n" RESET, realmName);
@@ -202,19 +302,14 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
         }
         customWrite(1, msg);
         free(msg);
-    } else if (ackFrame.type == NACK_ERROR) {
-        // L'altre va fer timeout mentre esperava la nostra resposta
-        addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_FAILED);
-        asprintf(&msg, RED "Alliance with %s failed (timeout on their side).\n" RESET, realmName);
-        customWrite(1, msg);
-        free(msg);
     } else {
-        asprintf(&msg, YELLOW "Unexpected response type 0x%02X from [%s]\n" RESET, 
-                 ackFrame.type, realmName);
+        addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_FAILED);
+        asprintf(&msg, RED "Alliance with %s failed.\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
     }
-    
+
+    releaseEnvoy(maester, envoyIndex);
     free(savedIp);
     return 0;
 }
@@ -259,70 +354,65 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
             }
         }
     }
-    
-    // 3. Conectar
-    int fd_dest = -1;
-    if (connectToRealmByRoute(targetIp, targetPort, &fd_dest) < 0) {
-        asprintf(&msg, RED "ERROR | Cannot connect to [%s]\n" RESET, realmName);
+    int envoyIndex = reserveEnvoy(maester);
+    if (envoyIndex < 0) {
+        asprintf(&msg, RED "ERROR | No envoys available\n" RESET);
         customWrite(1, msg);
         free(msg);
         free(targetIp);
         return -1;
     }
-    
-    // 4. Crear trama PRODUCT_LIST_REQUEST (TYPE 0x11)
-    char myOrigin[IP_SIZE];
-    snprintf(myOrigin, IP_SIZE, "%s:%d", maester->ip, maester->port);
-    
-    Frame requestFrame;
-    createFrame(&requestFrame, PRODUCT_LIST_REQUEST, myOrigin, realmName, maester->name);
-    
-    // 5. Enviar la trama
-    if (sendFrame(fd_dest, &requestFrame) < 0) {
-        asprintf(&msg, RED "ERROR | Failed to send product list request\n" RESET);
-        customWrite(1, msg);
-        free(msg);
-        close(fd_dest);
-        free(targetIp);
-        return -1;
-    }
-    
-    // 6. Esperar respuesta (Fase 2: solo ACK)
-    Frame responseFrame;
-    if (receiveFrame(fd_dest, &responseFrame) < 0) {
-        asprintf(&msg, RED "Error [NO_RESPONSE]\n" RESET);
-        customWrite(1, msg);
-        free(msg);
-        close(fd_dest);
-        free(targetIp);
-        return -1;
-    }
-    
-    close(fd_dest);
+
+    IpcRequest request;
+    IpcResponse response;
+    memset(&request, 0, sizeof(IpcRequest));
+    request.type = IPC_LIST_PRODUCTS_REMOTE;
+    strncpy(request.source_realm, maester->name, IPC_REALM_SIZE - 1);
+    strncpy(request.source_ip, maester->ip, IPC_IP_SIZE - 1);
+    request.source_port = (uint32_t)maester->port;
+    strncpy(request.target_realm, realmName, IPC_REALM_SIZE - 1);
+    strncpy(request.target_ip, targetIp, IPC_IP_SIZE - 1);
+    request.target_port = (uint32_t)targetPort;
+    asprintf(&msg, "LIST PRODUCTS to %s", realmName);
+    setEnvoyMission(maester, envoyIndex, msg);
+    free(msg);
+
     free(targetIp);
-    
-    // 7. Procesar respuesta
-    if (responseFrame.type == ACK_FILE) {
+
+    if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) == 0 &&
+        response.status == IPC_STATUS_OK) {
+        char catalogRealm[IPC_REALM_SIZE];
+        char serializedProducts[IPC_PAYLOAD_SIZE];
+        if (extractProductPayload(&response, catalogRealm, sizeof(catalogRealm), serializedProducts, sizeof(serializedProducts)) == 0) {
+            updateRemoteCatalog(maester, catalogRealm, serializedProducts);
+        }
         asprintf(&msg, GREEN "Product list request acknowledged by [%s]\n" RESET, realmName);
         customWrite(1, msg);
         free(msg);
-        // Fase 3: aquí se procesaría la lista de productos
-        customWrite(1, YELLOW "(Product list processing will be available in Phase 3)\n" RESET);
+        if (findRemoteCatalog(maester, realmName) != NULL) {
+            customWrite(1, GREEN "Remote catalog cached for trade session.\n" RESET);
+        } else {
+            customWrite(1, YELLOW "(Product list processing will be available in Phase 3)\n" RESET);
+        }
+        releaseEnvoy(maester, envoyIndex);
         return 0;
-    } else if (responseFrame.type == ERR_UNAUTHORIZED) {
+    } else if (response.frame_type == ERR_UNAUTHORIZED) {
         asprintf(&msg, RED "Error [UNAUTHORIZED]\n" RESET);
         customWrite(1, msg);
         free(msg);
+        releaseEnvoy(maester, envoyIndex);
         return -1;
-    } else if (responseFrame.type == NACK_ERROR) {
+    } else if (response.frame_type == NACK_ERROR) {
         asprintf(&msg, RED "Error [NACK]\n" RESET);
         customWrite(1, msg);
         free(msg);
+        releaseEnvoy(maester, envoyIndex);
         return -1;
     } else {
-        asprintf(&msg, YELLOW "Unexpected response type 0x%02X\n" RESET, responseFrame.type);
+        asprintf(&msg, YELLOW "Unexpected response type 0x%02X\n" RESET, response.frame_type);
         customWrite(1, msg);
         free(msg);
+        releaseEnvoy(maester, envoyIndex);
         return -1;
     }
 }

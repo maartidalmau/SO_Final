@@ -2,6 +2,8 @@
 #include "frame.h"
 #include "frameHandler.h"
 
+#include <errno.h>
+
 void *workerThread(void *arg) {
     WorkerArgs *args = (WorkerArgs *)arg;
     
@@ -43,10 +45,21 @@ void *serverThread(void *arg) {
 
     //Create server socket
     maester->serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (maester->serverSocket < 0) {
+        customWrite(1, RED "ERROR | Cannot create server socket\n" RESET);
+        maester->running = 0;
+        return NULL;
+    }
+
+    int reuseAddr = 1;
+    setsockopt(maester->serverSocket, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, sizeof(reuseAddr));
 
     //Bind server socket
     if (bind(maester->serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
-        customWrite(1, RED "ERROR | Cannot bind socket options\n" RESET);
+        char *msg;
+        asprintf(&msg, RED "ERROR | Cannot bind socket options (%s)\n" RESET, strerror(errno));
+        customWrite(1, msg);
+        free(msg);
         close(maester->serverSocket);
         maester->running = 0;
         return NULL;
@@ -54,8 +67,11 @@ void *serverThread(void *arg) {
 
     //Listen on server socket
     if (listen(maester->serverSocket, 10) < 0) {
+        char *msg;
         close(maester->serverSocket);
-        customWrite(1, RED "ERROR | Cannot listen on server socket\n" RESET);
+        asprintf(&msg, RED "ERROR | Cannot listen on server socket (%s)\n" RESET, strerror(errno));
+        customWrite(1, msg);
+        free(msg);
         maester->running = 0;
         return NULL;
     }
@@ -85,18 +101,19 @@ void *serverThread(void *arg) {
             customWrite(1, RED "ERROR | Cannot create worker thread\n" RESET);
             close(clientSocket);
             free(workerArgs);
+        } else {
+            pthread_detach(workerThreadID);
         }
 
     }
 
-    close(maester->serverSocket);
+    if (maester->serverSocket >= 0) {
+        close(maester->serverSocket);
+        maester->serverSocket = -1;
+    }
     return NULL;
 }
 
 void cerrarWorkers(Maester *maester){
-    pthread_mutex_lock(&maester->workersInfo->workers_mutex);
-    for (int i = 0; i < maester->workersInfo->numWorkers; i++){
-        pthread_join(maester->workersInfo->workersThreadID[i], NULL);
-    }
-    pthread_mutex_unlock(&maester->workersInfo->workers_mutex);
+    (void)maester;
 }

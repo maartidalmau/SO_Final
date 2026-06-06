@@ -228,6 +228,7 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
         
         // Actualitzar estat
         addOrUpdateAlliance(maester, responderName, NULL, 0, ALLIANCE_FAILED);
+        releaseEnvoyMissionForRealm(maester, responderName, "PLEDGE to ");
         
         // Enviar NACK (0x69) al que ens ha respost
         Frame nackFrame;
@@ -249,6 +250,7 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
     if (strcasecmp(responseType, "ACCEPT") == 0) {
         // Aliança acceptada! Guardar IP:Port per connexió directa futura
         addOrUpdateAlliance(maester, responderName, responderIp, responderPort, ALLIANCE_ACTIVE);
+        releaseEnvoyMissionForRealm(maester, responderName, "PLEDGE to ");
         
         asprintf(&msg, GREEN "\n>>> Alliance with %s forged successfully!\n" RESET, responderName);
         customWrite(1, msg);
@@ -256,6 +258,7 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
     } else {
         // Aliança rebutjada
         addOrUpdateAlliance(maester, responderName, NULL, 0, ALLIANCE_FAILED);
+        releaseEnvoyMissionForRealm(maester, responderName, "PLEDGE to ");
         
         asprintf(&msg, YELLOW "\n>>> Alliance with %s was rejected.\n" RESET, responderName);
         customWrite(1, msg);
@@ -300,16 +303,28 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
     
-    // Tenim aliança - per F2 simplement enviem ACK (sense processar realment)
-    asprintf(&msg, GREEN "Alliance verified with [%s] - sending ACK (F2 stub)\n" RESET, requesterName);
+    // Construïm un catàleg compacte per a poder reutilitzar-lo a START TRADE.
+    char catalog[DATA_MAX_SIZE];
+    int written = snprintf(catalog, sizeof(catalog), "OK&%s&", maester->name);
+    if (written < 0 || written >= (int)sizeof(catalog)) {
+        catalog[0] = '\0';
+    }
+    for (int i = 0; i < maester->numProducts && written > 0 && written < (int)sizeof(catalog) - 1; i++) {
+        int added = snprintf(catalog + written, sizeof(catalog) - (size_t)written, "%s%s",
+                             maester->inventory[i].name,
+                             (i < maester->numProducts - 1) ? "|" : "");
+        if (added < 0 || written + added >= (int)sizeof(catalog)) {
+            break;
+        }
+        written += added;
+    }
+
+    asprintf(&msg, GREEN "Alliance verified with [%s] - sending cached catalog ACK\n" RESET, requesterName);
     customWrite(1, msg);
     free(msg);
     
-    // Enviar ACK simple (per F2)
     Frame ackFrame;
-    char ackData[DATA_MAX_SIZE];
-    snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
-    createFrame(&ackFrame, ACK_FILE, "", "", ackData);
+    createFrame(&ackFrame, ACK_FILE, "", "", catalog);
     sendFrame(fromSocket, &ackFrame);
 }
 

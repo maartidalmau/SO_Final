@@ -8,6 +8,7 @@
 #include "router.h"
 #include "dataStructures.h"
 #include "allianceHandler.h"
+#include "envoy.h"
 
 #include <stdio.h>
 #include <stdlib.h>

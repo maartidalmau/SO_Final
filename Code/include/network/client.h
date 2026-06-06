@@ -7,6 +7,7 @@
 #include "router.h"
 #include "dataStructures.h"
 #include "allianceHandler.h"
+#include "ipc.h"
 
 
 #include <stdio.h>
@@ -21,5 +22,11 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
 int sendAllianceResponse(Maester *maester, const char *realmName, int accept);
 
 int sendProductListRequest(Maester *maester, const char *realmName);
+
+int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response);
+
+int envoySendAllianceResponse(const IpcRequest *request, IpcResponse *response);
+
+int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response);
 
 #endif // CLIENT_H

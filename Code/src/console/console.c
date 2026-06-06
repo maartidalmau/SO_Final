@@ -134,14 +134,23 @@ int commandHandler(char **command, Maester *maester) {
             customWrite(1, CYAN "Usage: ENVOY STATUS\n" RESET);
         } 
         else if (strcasecmp(tokens[1], "STATUS") == 0 && count == 2) {
-            // Mock per Fase 1
             customWrite(1, MAGENTA "--- Envoy Status ---\n" RESET);
+            pthread_mutex_lock(&maester->workersInfo->workers_mutex);
             for (int i = 0; i < maester->envoys; i++) {
                 char *msg;
-                asprintf(&msg, "  - Envoy %d: FREE\n", i + 1);
+                const char *status = "UNKNOWN";
+                if (maester->envoysAvailable != NULL) {
+                    status = maester->envoysAvailable[i] ? "FREE" : "BUSY";
+                }
+                if (!maester->envoysAvailable[i] && maester->envoyMissions != NULL && maester->envoyMissions[i] != NULL) {
+                    asprintf(&msg, "  - Envoy %d: %s (%s)\n", i + 1, status, maester->envoyMissions[i]);
+                } else {
+                    asprintf(&msg, "  - Envoy %d: %s\n", i + 1, status);
+                }
                 customWrite(1, msg);
                 free(msg);
             }
+            pthread_mutex_unlock(&maester->workersInfo->workers_mutex);
         } 
         else {
             customWrite(1, RED "Unknown command\n" RESET);

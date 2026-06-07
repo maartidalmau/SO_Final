@@ -44,7 +44,11 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
             case ACK_MD5SUM:
                 handleAckMD5(maester, frame, fromSocket);
                 break;
-                
+
+            case PING_PONG:
+                handlePingPong(maester, frame, fromSocket);
+                break;
+
             default:
                 sendNack(fromSocket, maester->name, "UNKNOWN_TYPE");
                 break;
@@ -344,6 +348,50 @@ void handleAckMD5(Maester *maester, Frame *frame, int fromSocket) {
     (void)maester;
     (void)frame;
     (void)fromSocket;
-    
+
     customWrite(1, YELLOW "TODO: handleAckMD5 not yet implemented\n" RESET);
+}
+
+void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
+    char *msg;
+
+    if (!frame || !frame->data) {
+        return;
+    }
+
+    // Determinar si es PING o PONG
+    int isPing = (strncmp(frame->data, "PING", 4) == 0);
+    int isPong = (strncmp(frame->data, "PONG", 4) == 0);
+
+    if (isPing) {
+        // PING received
+        asprintf(&msg, CYAN ">>> Received PING from [%s]\n" RESET, frame->ip_origin);
+        customWrite(1, msg);
+        free(msg);
+
+        // Create PONG
+        Frame pongFrame;
+        createFrame(&pongFrame, PING_PONG, frame->ip_destination, frame->ip_origin, "PONG");
+
+        // Send PONG response
+        if (sendFrame(fromSocket, &pongFrame) < 0) {
+            asprintf(&msg, RED "ERROR | Failed to send PONG response\n" RESET);
+            customWrite(1, msg);
+            free(msg);
+        } else {
+            asprintf(&msg, CYAN ">>> Sent PONG to [%s]\n" RESET, frame->ip_origin);
+            customWrite(1, msg);
+            free(msg);
+        }
+    } else if (isPong) {
+        // PONG received
+        asprintf(&msg, CYAN ">>> Received PONG from [%s]\n" RESET, frame->ip_origin);
+        customWrite(1, msg);
+        free(msg);
+    } else {
+        // Invalid data
+        asprintf(&msg, RED "ERROR | Invalid PING/PONG data: %s\n" RESET, frame->data);
+        customWrite(1, msg);
+        free(msg);
+    }
 }

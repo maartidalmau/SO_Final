@@ -176,11 +176,69 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
 }
 
 void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)frame;
-    (void)fromSocket;
-    
-    customWrite(1, YELLOW "TODO: handleSigilSend not yet implemented\n" RESET);
+    char *msg;
+
+    if (!maester || !frame) {
+        return;
+    }
+
+    char requesterName[64];
+    requesterName[0] = '\0';
+
+    pthread_mutex_lock(&maester->alliances_mutex);
+    for (int i = 0; i < maester->numAlliances; i++) {
+        if (maester->alliances[i].ip && maester->alliances[i].port > 0) {
+            char allyIpPort[IP_SIZE];
+            snprintf(allyIpPort, sizeof(allyIpPort), "%s:%d",
+                     maester->alliances[i].ip, maester->alliances[i].port);
+            if (strcmp(allyIpPort, frame->ip_origin) == 0) {
+                strncpy(requesterName, maester->alliances[i].name, sizeof(requesterName) - 1);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&maester->alliances_mutex);
+
+    if (requesterName[0] == '\0') {
+        sendNack(fromSocket, maester->name, "UNKNOWN_REQUESTER");
+        return;
+    }
+
+    char sigilPath[512];
+    snprintf(sigilPath, sizeof(sigilPath), "Assets/%s.png", requesterName);
+
+    int fd = open(sigilPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) {
+        asprintf(&msg, RED "ERROR | Cannot create sigil file [%s]\n" RESET, sigilPath);
+        customWrite(1, msg);
+        free(msg);
+        sendNack(fromSocket, maester->name, "FILE_ERROR");
+        return;
+    }
+
+    uint16_t dataLen = ntohs(frame->data_length);
+    if (write(fd, frame->data, dataLen) < 0) {
+        close(fd);
+        asprintf(&msg, RED "ERROR | Failed to write sigil data\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        sendNack(fromSocket, maester->name, "WRITE_ERROR");
+        return;
+    }
+
+    close(fd);
+
+    int isLastChunk = (dataLen < DATA_MAX_SIZE);
+    if (isLastChunk) {
+        asprintf(&msg, CYAN ">>> Sigil received from [%s], saved to [%s]\n" RESET,
+                 requesterName, sigilPath);
+        customWrite(1, msg);
+        free(msg);
+    }
+
+    Frame ackFrame;
+    createFrame(&ackFrame, ACK_FILE, "", "", "OK");
+    sendFrame(fromSocket, &ackFrame);
 }
 
 void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
@@ -254,8 +312,42 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
     if (strcasecmp(responseType, "ACCEPT") == 0) {
         // Aliança acceptada! Guardar IP:Port per connexió directa futura
         addOrUpdateAlliance(maester, responderName, responderIp, responderPort, ALLIANCE_ACTIVE);
+
+        // Enviar sigil al realm que va acceptar
+        char *sigilPath = getAllianceSigil(maester, responderName);
+        if (sigilPath) {
+            int envoyIndex = reserveEnvoy(maester);
+            if (envoyIndex >= 0) {
+                IpcRequest sigilRequest;
+                IpcResponse sigilResponse;
+                memset(&sigilRequest, 0, sizeof(IpcRequest));
+
+                sigilRequest.type = IPC_SEND_SIGIL;
+                strncpy(sigilRequest.source_realm, maester->name, IPC_REALM_SIZE - 1);
+                strncpy(sigilRequest.source_ip, maester->ip, IPC_IP_SIZE - 1);
+                sigilRequest.source_port = (uint32_t)maester->port;
+                strncpy(sigilRequest.target_realm, responderName, IPC_REALM_SIZE - 1);
+                strncpy(sigilRequest.target_ip, responderIp, IPC_IP_SIZE - 1);
+                sigilRequest.target_port = (uint32_t)responderPort;
+                strncpy(sigilRequest.path, sigilPath, IPC_PATH_SIZE - 1);
+
+                asprintf(&msg, "PLEDGE SIGIL to %s", responderName);
+                setEnvoyMission(maester, envoyIndex, msg);
+                free(msg);
+
+                if (dispatchEnvoyRequest(maester, envoyIndex, &sigilRequest, &sigilResponse) < 0) {
+                    asprintf(&msg, YELLOW "Warning: Failed to send sigil to [%s]\n" RESET, responderName);
+                    customWrite(1, msg);
+                    free(msg);
+                }
+
+                releaseEnvoy(maester, envoyIndex);
+            }
+            free(sigilPath);
+        }
+
         releaseEnvoyMissionForRealm(maester, responderName, "PLEDGE to ");
-        
+
         asprintf(&msg, GREEN "\n>>> Alliance with %s forged successfully!\n" RESET, responderName);
         customWrite(1, msg);
         free(msg);

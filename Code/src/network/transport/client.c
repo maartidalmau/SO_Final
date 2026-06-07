@@ -1,6 +1,8 @@
 #include "client.h"
 #include "envoy.h"
 
+#include <sys/stat.h>
+
 static int connectForRequest(const IpcRequest *request, int *fd_out) {
     return connectToRealmByRoute(request->target_ip, (int)request->target_port, fd_out);
 }
@@ -223,6 +225,7 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
         return -1;
     }
     addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_PENDING);
+    setAllianceSigil(maester, realmName, sigilPath);
     return 0;
 }
 
@@ -231,6 +234,68 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
 // ═══════════════════════════════════════════════════════════
 // STUBS: Funciones pendientes de implementar
 // ═══════════════════════════════════════════════════════════
+
+int envoySendSigilFile(const IpcRequest *request, IpcResponse *response) {
+    if (!request || !response) {
+        return -1;
+    }
+
+    int fd_dest = -1;
+    if (connectForRequest(request, &fd_dest) < 0) {
+        fillBasicError(response, "Cannot connect to target realm");
+        return -1;
+    }
+
+    int fd_sigil = open(request->path, O_RDONLY);
+    if (fd_sigil < 0) {
+        close(fd_dest);
+        fillBasicError(response, "Cannot open sigil file");
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd_sigil, &st) < 0) {
+        close(fd_sigil);
+        close(fd_dest);
+        fillBasicError(response, "Cannot stat sigil file");
+        return -1;
+    }
+
+    char origin[IP_SIZE];
+    snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
+
+    uint8_t chunk[DATA_MAX_SIZE];
+    ssize_t bytesRead;
+    Frame sigilFrame;
+
+    while ((bytesRead = read(fd_sigil, chunk, DATA_MAX_SIZE)) > 0) {
+        createFrame(&sigilFrame, SIGIL_SEND, origin, request->target_realm, (const char *)chunk);
+        sigilFrame.data_length = htons((uint16_t)bytesRead);
+
+        if (sendFrame(fd_dest, &sigilFrame) < 0) {
+            close(fd_sigil);
+            close(fd_dest);
+            fillBasicError(response, "Failed to send sigil chunk");
+            return -1;
+        }
+    }
+
+    close(fd_sigil);
+
+    Frame ackFrame;
+    if (receiveFrame(fd_dest, &ackFrame) < 0) {
+        close(fd_dest);
+        fillBasicError(response, "No ACK received for sigil");
+        return -1;
+    }
+
+    close(fd_dest);
+    response->status = (ackFrame.type == ACK_FILE || ackFrame.type == ACK_MD5SUM) ? IPC_STATUS_OK : IPC_STATUS_REMOTE_ERROR;
+    response->frame_type = ackFrame.type;
+    response->result_code = (ackFrame.type == ACK_FILE || ackFrame.type == ACK_MD5SUM) ? 0 : -1;
+    strncpy(response->payload, ackFrame.data, IPC_PAYLOAD_SIZE - 1);
+    return response->result_code;
+}
 
 int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
     if (!maester || !realmName) {

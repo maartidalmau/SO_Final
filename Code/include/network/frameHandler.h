@@ -9,10 +9,13 @@
 #include "dataStructures.h"
 #include "allianceHandler.h"
 #include "envoy.h"
+#include "ipc.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <fcntl.h>
 
 
 void processFrame(Maester *maester, Frame *frame, int fromSocket);

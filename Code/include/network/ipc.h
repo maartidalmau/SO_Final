@@ -15,6 +15,7 @@ typedef enum {
     IPC_PLEDGE_REQUEST = 1,
     IPC_PLEDGE_RESPOND = 2,
     IPC_LIST_PRODUCTS_REMOTE = 3,
+    IPC_SEND_SIGIL = 4,
     IPC_SHUTDOWN = 255
 } IpcRequestType;
 

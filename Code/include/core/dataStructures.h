@@ -45,7 +45,8 @@ typedef struct {
     char *ip;
     int port;
     int status;
-    time_t requestTime;  // Timestamp de quan es va enviar/rebre la petició
+    time_t requestTime;
+    char *sigilPath;
 } Alliance;
 
 typedef struct {

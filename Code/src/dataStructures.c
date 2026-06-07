@@ -235,6 +235,7 @@ void destroyMaester(Maester *maester) {
     for (int i = 0; i < maester->numAlliances; i++) {
         safeFree((void**)&maester->alliances[i].name);
         safeFree((void**)&maester->alliances[i].ip);
+        safeFree((void**)&maester->alliances[i].sigilPath);
     }
     safeFree((void**)&maester->alliances);
     

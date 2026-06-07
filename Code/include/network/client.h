@@ -29,4 +29,6 @@ int envoySendAllianceResponse(const IpcRequest *request, IpcResponse *response);
 
 int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response);
 
+int envoySendSigilFile(const IpcRequest *request, IpcResponse *response);
+
 #endif // CLIENT_H

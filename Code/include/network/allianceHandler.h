@@ -15,4 +15,8 @@ Alliance* findAlliance(Maester *maester, const char *realmName);
 
 int getAllianceInfo(Maester *maester, const char *realmName, char **ipOut, int *portOut, int *statusOut, time_t *requestTimeOut);
 
+void setAllianceSigil(Maester *maester, const char *realmName, const char *sigilPath);
+
+char* getAllianceSigil(Maester *maester, const char *realmName);
+
 #endif // ALLIANCE_HANDLER_H

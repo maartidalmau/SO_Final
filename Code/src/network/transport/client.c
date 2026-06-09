@@ -235,6 +235,87 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
 // STUBS: Funciones pendientes de implementar
 // ═══════════════════════════════════════════════════════════
 
+int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
+    if (!request || !response) {
+        return -1;
+    }
+
+    int fd_dest = -1;
+    if (connectForRequest(request, &fd_dest) < 0) {
+        fillBasicError(response, "Cannot connect to target realm");
+        return -1;
+    }
+
+    int fd_trade = open(request->path, O_RDONLY);
+    if (fd_trade < 0) {
+        close(fd_dest);
+        fillBasicError(response, "Cannot open trade file");
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd_trade, &st) < 0) {
+        close(fd_trade);
+        close(fd_dest);
+        fillBasicError(response, "Cannot stat trade file");
+        return -1;
+    }
+
+    char origin[IP_SIZE];
+    snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
+
+    char headerData[DATA_MAX_SIZE];
+    snprintf(headerData, DATA_MAX_SIZE, "%ld", st.st_size);
+
+    Frame headerFrame;
+    createFrame(&headerFrame, ORDER_REQUEST_HEADER, origin, request->target_realm, headerData);
+    if (sendFrame(fd_dest, &headerFrame) < 0) {
+        close(fd_trade);
+        close(fd_dest);
+        fillBasicError(response, "Failed to send trade header");
+        return -1;
+    }
+
+    uint8_t chunk[DATA_MAX_SIZE];
+    ssize_t bytesRead;
+    Frame dataFrame;
+
+    while ((bytesRead = read(fd_trade, chunk, DATA_MAX_SIZE)) > 0) {
+        createFrame(&dataFrame, ORDER_REQUEST_DATA, origin, request->target_realm, (const char *)chunk);
+        dataFrame.data_length = htons((uint16_t)bytesRead);
+
+        if (sendFrame(fd_dest, &dataFrame) < 0) {
+            close(fd_trade);
+            close(fd_dest);
+            fillBasicError(response, "Failed to send trade chunk");
+            return -1;
+        }
+    }
+
+    close(fd_trade);
+
+    Frame ackFrame;
+    if (receiveFrame(fd_dest, &ackFrame) < 0) {
+        close(fd_dest);
+        fillBasicError(response, "No ACK received for trade");
+        return -1;
+    }
+
+    close(fd_dest);
+
+    if (ackFrame.type == ORDER_RESPONSE) {
+        response->status = (strstr(ackFrame.data, "OK") != NULL) ? IPC_STATUS_OK : IPC_STATUS_REMOTE_ERROR;
+    } else {
+        response->status = IPC_STATUS_REMOTE_ERROR;
+    }
+
+    response->frame_type = ackFrame.type;
+    response->result_code = (response->status == IPC_STATUS_OK) ? 0 : -1;
+    strncpy(response->payload, ackFrame.data, IPC_PAYLOAD_SIZE - 1);
+
+    return response->result_code;
+}
+
 int envoySendSigilFile(const IpcRequest *request, IpcResponse *response) {
     if (!request || !response) {
         return -1;

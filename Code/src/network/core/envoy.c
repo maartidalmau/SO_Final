@@ -2,6 +2,8 @@
 #include "client.h"
 #include "utils.h"
 
+#include <signal.h>
+
 static IpcResponse executeEnvoyRequest(const IpcRequest *request) {
     IpcResponse response;
     memset(&response, 0, sizeof(IpcResponse));
@@ -22,6 +24,9 @@ static IpcResponse executeEnvoyRequest(const IpcRequest *request) {
             break;
         case IPC_SEND_SIGIL:
             envoySendSigilFile(request, &response);
+            break;
+        case IPC_SEND_TRADE_FILE:
+            envoySendTradeFile(request, &response);
             break;
         case IPC_SHUTDOWN:
             response.status = IPC_STATUS_OK;
@@ -45,7 +50,9 @@ void envoyProcess(Envoy envoy) {
         }
 
         IpcResponse response = executeEnvoyRequest(&request);
-        sendIpcResponse(envoy.c2p, &response);
+        if (sendIpcResponse(envoy.c2p, &response) < 0) {
+            break;
+        }
 
         if (request.type == IPC_SHUTDOWN) {
             break;
@@ -99,6 +106,18 @@ void createEnvoys(Maester *maester){
             close(maester->envoyPInfo.c2p[i][1]);
         } else {
             customWrite(1, RED "ERROR | Fork failed\n" RESET);
+            for (int j = 0; j < i; j++) {
+                close(maester->envoyPInfo.p2c[j][0]);
+                close(maester->envoyPInfo.p2c[j][1]);
+                close(maester->envoyPInfo.c2p[j][0]);
+                close(maester->envoyPInfo.c2p[j][1]);
+            }
+            for (int j = 0; j < i; j++) {
+                if (maester->envoyPInfo.envoyPIDs[j] > 0) {
+                    kill(maester->envoyPInfo.envoyPIDs[j], SIGKILL);
+                    waitpid(maester->envoyPInfo.envoyPIDs[j], NULL, 0);
+                }
+            }
             destroyMaester(maester);
             return;
         }

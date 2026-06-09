@@ -384,3 +384,58 @@ void endAndCleanEnvoys(Maester *maester) {
     free(maester->envoyPInfo.c2p);
     free(maester->envoyPInfo.envoyPIDs);
 }
+
+int decrementInventory(Maester *maester, const char *productName, int quantity) {
+    if (!maester || !productName || quantity <= 0) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&maester->inventory_mutex);
+
+    for (int i = 0; i < maester->numProducts; i++) {
+        if (strcasecmp(maester->inventory[i].name, productName) == 0) {
+            if (maester->inventory[i].amount >= quantity) {
+                maester->inventory[i].amount -= quantity;
+                pthread_mutex_unlock(&maester->inventory_mutex);
+                return 0;
+            } else {
+                pthread_mutex_unlock(&maester->inventory_mutex);
+                return -1;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&maester->inventory_mutex);
+    return -1;
+}
+
+int updateStockDB(const char *filename, Maester *maester) {
+    if (!filename || !maester) {
+        return -1;
+    }
+
+    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&maester->inventory_mutex);
+
+    for (int i = 0; i < maester->numProducts; i++) {
+        AuxiliarProduct aux;
+        strncpy(aux.name, maester->inventory[i].name, sizeof(aux.name) - 1);
+        aux.name[sizeof(aux.name) - 1] = '\0';
+        aux.amount = maester->inventory[i].amount;
+        aux.weight = maester->inventory[i].weight;
+
+        if (write(fd, &aux, sizeof(AuxiliarProduct)) < 0) {
+            pthread_mutex_unlock(&maester->inventory_mutex);
+            close(fd);
+            return -1;
+        }
+    }
+
+    pthread_mutex_unlock(&maester->inventory_mutex);
+    close(fd);
+    return 0;
+}

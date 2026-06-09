@@ -31,4 +31,6 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
 
 int envoySendSigilFile(const IpcRequest *request, IpcResponse *response);
 
+int envoySendTradeFile(const IpcRequest *request, IpcResponse *response);
+
 #endif // CLIENT_H

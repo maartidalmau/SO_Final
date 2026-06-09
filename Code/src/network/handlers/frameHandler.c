@@ -49,6 +49,15 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
                 handlePingPong(maester, frame, fromSocket);
                 break;
 
+            case ORDER_REQUEST_HEADER:
+            case ORDER_REQUEST_DATA:
+                handleTradeRequest(maester, frame, fromSocket);
+                break;
+
+            case ORDER_RESPONSE:
+                handleOrderResponse(maester, frame, fromSocket);
+                break;
+
             default:
                 sendNack(fromSocket, maester->name, "UNKNOWN_TYPE");
                 break;
@@ -485,5 +494,171 @@ void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
         asprintf(&msg, RED "ERROR | Invalid PING/PONG data: %s\n" RESET, frame->data);
         customWrite(1, msg);
         free(msg);
+    }
+}
+
+void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
+    char *msg;
+    static char tradeFilePath[512] = "";
+    static long totalTradeSize = 0;
+    static long receivedBytes = 0;
+
+    if (!maester || !frame) {
+        return;
+    }
+
+    char requesterName[64];
+    requesterName[0] = '\0';
+
+    pthread_mutex_lock(&maester->alliances_mutex);
+    for (int i = 0; i < maester->numAlliances; i++) {
+        if (maester->alliances[i].ip && maester->alliances[i].port > 0) {
+            char allyIpPort[IP_SIZE];
+            snprintf(allyIpPort, sizeof(allyIpPort), "%s:%d",
+                     maester->alliances[i].ip, maester->alliances[i].port);
+            if (strcmp(allyIpPort, frame->ip_origin) == 0) {
+                strncpy(requesterName, maester->alliances[i].name, sizeof(requesterName) - 1);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&maester->alliances_mutex);
+
+    if (requesterName[0] == '\0') {
+        sendNack(fromSocket, maester->name, "UNKNOWN_REQUESTER");
+        return;
+    }
+
+    if (frame->type == ORDER_REQUEST_HEADER) {
+        totalTradeSize = atol(frame->data);
+        receivedBytes = 0;
+
+        snprintf(tradeFilePath, sizeof(tradeFilePath), "/tmp/trade_%s_%ld.tmp",
+                 requesterName, time(NULL));
+
+        int fd = open(tradeFilePath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            sendNack(fromSocket, maester->name, "FILE_ERROR");
+            return;
+        }
+        close(fd);
+
+        asprintf(&msg, CYAN ">>> Trade request from [%s], total size: %ld bytes\n" RESET,
+                 requesterName, totalTradeSize);
+        customWrite(1, msg);
+        free(msg);
+
+        Frame ackFrame;
+        createFrame(&ackFrame, ACK_FILE, "", "", "OK");
+        sendFrame(fromSocket, &ackFrame);
+
+    } else if (frame->type == ORDER_REQUEST_DATA) {
+        uint16_t dataLen = ntohs(frame->data_length);
+        receivedBytes += dataLen;
+
+        int fd = open(tradeFilePath, O_WRONLY | O_APPEND);
+        if (fd < 0) {
+            sendNack(fromSocket, maester->name, "FILE_ERROR");
+            return;
+        }
+
+        if (write(fd, frame->data, dataLen) < 0) {
+            close(fd);
+            sendNack(fromSocket, maester->name, "WRITE_ERROR");
+            return;
+        }
+        close(fd);
+
+        int isComplete = (dataLen < DATA_MAX_SIZE);
+        if (isComplete || receivedBytes >= totalTradeSize) {
+            asprintf(&msg, CYAN ">>> Trade received from [%s], total: %ld bytes\n" RESET,
+                     requesterName, receivedBytes);
+            customWrite(1, msg);
+            free(msg);
+
+            char orderResponseData[DATA_MAX_SIZE];
+            int response_ok = 1;
+
+            int fd_trade = open(tradeFilePath, O_RDONLY);
+            if (fd_trade < 0) {
+                snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT|Cannot read trade file");
+                response_ok = 0;
+            } else {
+                char lineBuf[256];
+                char *line = NULL;
+                size_t lineLen = 0;
+
+                FILE *fp = fdopen(fd_trade, "r");
+                if (fp) {
+                    while ((lineLen = getline(&line, &lineLen, fp)) != -1) {
+                        int qty = 0;
+                        char product[128];
+
+                        if (sscanf(line, "%d x %127s", &qty, product) == 2) {
+                            if (decrementInventory(maester, product, qty) < 0) {
+                                snprintf(orderResponseData, DATA_MAX_SIZE,
+                                        "REJECT|Insufficient stock for %s", product);
+                                response_ok = 0;
+                                break;
+                            }
+                        }
+                    }
+                    free(line);
+                    fclose(fp);
+
+                    if (response_ok) {
+                        updateStockDB(maester->path, maester);
+                        snprintf(orderResponseData, DATA_MAX_SIZE, "OK|Trade accepted");
+                    }
+                } else {
+                    snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT|Cannot parse trade");
+                    response_ok = 0;
+                }
+            }
+
+            Frame responseFrame;
+            createFrame(&responseFrame, ORDER_RESPONSE, "", "", orderResponseData);
+            sendFrame(fromSocket, &responseFrame);
+
+            unlink(tradeFilePath);
+            tradeFilePath[0] = '\0';
+            totalTradeSize = 0;
+            receivedBytes = 0;
+        } else {
+            Frame ackFrame;
+            createFrame(&ackFrame, ACK_FILE, "", "", "OK");
+            sendFrame(fromSocket, &ackFrame);
+        }
+    }
+}
+
+void handleOrderResponse(Maester *maester, Frame *frame, int fromSocket) {
+    (void)fromSocket;
+    char *msg;
+
+    if (!maester || !frame) {
+        return;
+    }
+
+    char responseType[16];
+    char responseDetail[256];
+
+    if (sscanf(frame->data, "%15[^|]|%255s", responseType, responseDetail) < 1) {
+        asprintf(&msg, RED "ERROR | Invalid order response format\n" RESET);
+        customWrite(1, msg);
+        free(msg);
+        return;
+    }
+
+    if (strcasecmp(responseType, "OK") == 0) {
+        asprintf(&msg, GREEN "\n>>> Trade ACCEPTED by [%s]\n" RESET, frame->ip_origin);
+        customWrite(1, msg);
+        free(msg);
+        customWrite(1, GREEN "$ " RESET);
+    } else {
+        asprintf(&msg, RED "\n>>> Trade REJECTED: %s\n" RESET, responseDetail);
+        customWrite(1, msg);
+        free(msg);
+        customWrite(1, GREEN "$ " RESET);
     }
 }

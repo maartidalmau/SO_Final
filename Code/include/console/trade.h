@@ -10,6 +10,10 @@
 //Project libraries
 #include "utils.h"
 #include "dataStructures.h"
+#include "envoy.h"
+#include "client.h"
+#include "router.h"
+#include "ipc.h"
 
 void startTrade(Trade *trade, Maester *maester);
 

@@ -39,4 +39,8 @@ void handleAckFile(Maester *maester, Frame *frame, int fromSocket);
 
 void handleAckMD5(Maester *maester, Frame *frame, int fromSocket);
 
+void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket);
+
+void handleOrderResponse(Maester *maester, Frame *frame, int fromSocket);
+
 #endif // FRAMEHANDLER_H

@@ -75,6 +75,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (envoysUtilities(maester)){
+        endAndCleanEnvoys(maester);
         destroyMaester(maester);
         return 1;
     }
@@ -83,6 +84,7 @@ int main(int argc, char *argv[]) {
     pthread_t serverThreadID;
     if (pthread_create(&serverThreadID, NULL, serverThread, (void *)maester) != 0) {
         customWrite(1, RED "ERROR | Cannot create server thread\n" RESET);
+        endAndCleanEnvoys(maester);
         destroyMaester(maester);
         return 1;
     }

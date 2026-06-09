@@ -141,4 +141,8 @@ RemoteCatalog *findRemoteCatalog(Maester *maester, const char *realmName);
 
 int updateRemoteCatalog(Maester *maester, const char *realmName, const char *serializedProducts);
 
+int decrementInventory(Maester *maester, const char *productName, int quantity);
+
+int updateStockDB(const char *filename, Maester *maester);
+
 #endif

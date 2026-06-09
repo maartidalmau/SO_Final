@@ -179,9 +179,9 @@ int writeTradeFile(Trade *trade, char *fileName) {
     return 1;
 }
 
-int handleSendCommand(Trade *trade) {
-    if (!trade) return 0;
-    
+int handleSendCommand(Trade *trade, Maester *maester) {
+    if (!trade || !maester) return 0;
+
     if (trade->totalAmount == 0) {
         customWrite(1, RED "No products listed for trade.\n" RESET);
         return 0;
@@ -195,13 +195,57 @@ int handleSendCommand(Trade *trade) {
 
     int success = 0;
     if (writeTradeFile(trade, fileName)) {
+        int envoyIndex = reserveEnvoy(maester);
+        if (envoyIndex < 0) {
+            customWrite(1, RED "ERROR | No envoys available\n" RESET);
+            free(fileName);
+            return 0;
+        }
+
+        char *routeIp = NULL;
+        int routePort = 0;
+        if (!getRouteInfo(maester, trade->kingdom, &routeIp, &routePort)) {
+            releaseEnvoy(maester, envoyIndex);
+            customWrite(1, RED "ERROR | No route to realm [%s]\n" RESET, trade->kingdom);
+            free(fileName);
+            return 0;
+        }
+
+        IpcRequest request;
+        IpcResponse response;
+        memset(&request, 0, sizeof(IpcRequest));
+
+        request.type = IPC_SEND_TRADE_FILE;
+        strncpy(request.source_realm, maester->name, IPC_REALM_SIZE - 1);
+        strncpy(request.source_ip, maester->ip, IPC_IP_SIZE - 1);
+        request.source_port = (uint32_t)maester->port;
+        strncpy(request.target_realm, trade->kingdom, IPC_REALM_SIZE - 1);
+        strncpy(request.target_ip, routeIp, IPC_IP_SIZE - 1);
+        request.target_port = (uint32_t)routePort;
+        strncpy(request.path, fileName, IPC_PATH_SIZE - 1);
+
         char *msg;
-        asprintf(&msg, GREEN "Trade list sent to %s.\n" RESET, trade->kingdom);
-        customWrite(1, msg);
+        asprintf(&msg, "TRADE with %s", trade->kingdom);
+        setEnvoyMission(maester, envoyIndex, msg);
         free(msg);
-        success = 1;
+
+        if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) < 0 ||
+            response.status != IPC_STATUS_OK) {
+            asprintf(&msg, RED "ERROR | Failed to send trade to [%s]\n" RESET, trade->kingdom);
+            customWrite(1, msg);
+            free(msg);
+            releaseEnvoy(maester, envoyIndex);
+        } else {
+            asprintf(&msg, GREEN "Trade sent to %s. Awaiting response...\n" RESET, trade->kingdom);
+            customWrite(1, msg);
+            free(msg);
+            releaseEnvoy(maester, envoyIndex);
+            success = 1;
+        }
+
+        if (routeIp) free(routeIp);
     }
-    
+
     free(fileName);
     return success;
 }
@@ -363,7 +407,7 @@ void startTrade(Trade *trade, Maester *maester) {
             free(productName);
         } 
         else if (strcasecmp(tokens[0], "SEND") == 0 && count == 1) {
-            exit = handleSendCommand(trade);
+            exit = handleSendCommand(trade, maester);
         } 
         else if (strcasecmp(tokens[0], "CANCEL") == 0 && count == 1) {
             customWrite(1, YELLOW "Trade cancelled.\n" RESET);

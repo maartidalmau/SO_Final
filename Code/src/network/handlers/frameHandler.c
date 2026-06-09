@@ -454,9 +454,10 @@ void handleAckMD5(Maester *maester, Frame *frame, int fromSocket) {
 }
 
 void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
+    (void)maester;
     char *msg;
 
-    if (!frame || !frame->data) {
+    if (!frame) {
         return;
     }
 
@@ -584,13 +585,13 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
                 snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT|Cannot read trade file");
                 response_ok = 0;
             } else {
-                char lineBuf[256];
                 char *line = NULL;
                 size_t lineLen = 0;
 
                 FILE *fp = fdopen(fd_trade, "r");
                 if (fp) {
-                    while ((lineLen = getline(&line, &lineLen, fp)) != -1) {
+                    ssize_t readLen;
+                    while ((readLen = getline(&line, &lineLen, fp)) != -1) {
                         int qty = 0;
                         char product[128];
 

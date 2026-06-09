@@ -265,7 +265,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
 
     char headerData[DATA_MAX_SIZE];
-    snprintf(headerData, DATA_MAX_SIZE, "%ld", st.st_size);
+    snprintf(headerData, DATA_MAX_SIZE, "%lld", (long long)st.st_size);
 
     Frame headerFrame;
     createFrame(&headerFrame, ORDER_REQUEST_HEADER, origin, request->target_realm, headerData);

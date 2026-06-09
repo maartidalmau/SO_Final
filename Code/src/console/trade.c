@@ -206,7 +206,10 @@ int handleSendCommand(Trade *trade, Maester *maester) {
         int routePort = 0;
         if (!getRouteInfo(maester, trade->kingdom, &routeIp, &routePort)) {
             releaseEnvoy(maester, envoyIndex);
-            customWrite(1, RED "ERROR | No route to realm [%s]\n" RESET, trade->kingdom);
+            char *msg;
+            asprintf(&msg, RED "ERROR | No route to realm [%s]\n" RESET, trade->kingdom);
+            customWrite(1, msg);
+            free(msg);
             free(fileName);
             return 0;
         }

@@ -59,7 +59,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     char origin[IP_SIZE];
     char frameData[DATA_MAX_SIZE];
     snprintf(origin, IP_SIZE, "%s:%u", request->source_ip, request->source_port);
-    snprintf(frameData, DATA_MAX_SIZE, "%s&%s&0&00000000000000000000000000000000",
+    snprintf(frameData, DATA_MAX_SIZE, "%.63s&%.100s&0&00000000000000000000000000000000",
              request->source_realm, request->path);
 
     Frame requestFrame;

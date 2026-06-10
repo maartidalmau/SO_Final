@@ -1,0 +1,14 @@
+TheVale
+../files/maesters/thevale
+1
+192.168.1.4
+8097
+--- ROUTES ---
+DEFAULT 192.168.1.4 8096
+Dragonstone *.*.*.* 0
+KingsLanding 192.168.1.4 8096
+Driftmark *.*.*.* 0
+Riverrun *.*.*.* 0
+
+
+

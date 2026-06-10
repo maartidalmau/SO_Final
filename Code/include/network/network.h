@@ -7,7 +7,7 @@
 
 #define TRAMA_SIZE 320
 #define DATA_MAX_SIZE (TRAMA_SIZE - 45)
-#define IP_SIZE 24
+#define IP_SIZE 20
 
 
 typedef struct {

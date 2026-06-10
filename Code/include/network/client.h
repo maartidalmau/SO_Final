@@ -33,4 +33,8 @@ int envoySendSigilFile(const IpcRequest *request, IpcResponse *response);
 
 int envoySendTradeFile(const IpcRequest *request, IpcResponse *response);
 
+int sendPing(Maester *maester, const char *realmName);
+
+int envoySendPing(const IpcRequest *request, IpcResponse *response);
+
 #endif // CLIENT_H

@@ -1,4 +1,5 @@
 #include "frameHandler.h"
+#include "md5.h"
 
 void processFrame(Maester *maester, Frame *frame, int fromSocket) {
     if (!maester || !frame) {
@@ -126,28 +127,25 @@ void handleNack(Maester *maester, Frame *frame, int fromSocket) {
 
 void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
-    (void)fromSocket;  // Per F2 no enviem ACK aquí
-    
+
     // 1. Parsejar DATA: <RealmName>&<SigilName>&<FileSize>&<MD5SUM>
-    char requesterName[64];
-    char sigilName[64];
-    int fileSize = 0;
-    char md5sum[64];
-    
-    // Mínim necessitem RealmName i SigilName
-    if (sscanf(frame->data, "%63[^&]&%63[^&]&%d&%63s", 
-               requesterName, sigilName, &fileSize, md5sum) < 2) {
+    char requesterName[64] = "";
+    char sigilName[64] = "";
+    long fileSize = 0;
+    char expectedMd5[64] = "";
+
+    if (sscanf(frame->data, "%63[^&]&%63[^&]&%ld&%63s",
+               requesterName, sigilName, &fileSize, expectedMd5) < 4) {
         asprintf(&msg, RED "ERROR | Invalid alliance request format\n" RESET);
         customWrite(1, msg);
         free(msg);
         sendNack(fromSocket, maester->name, "INVALID_FORMAT");
         return;
     }
-    
+
     // 2. Parsejar ORIGIN per obtenir IP:Port del sol·licitant
     char requesterIp[32];
     int requesterPort = 0;
-    
     if (sscanf(frame->ip_origin, "%31[^:]:%d", requesterIp, &requesterPort) != 2) {
         asprintf(&msg, RED "ERROR | Invalid origin format in alliance request\n" RESET);
         customWrite(1, msg);
@@ -155,33 +153,81 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         sendNack(fromSocket, maester->name, "INVALID_ORIGIN");
         return;
     }
-    
-    // 3. Verificar si ja tenim aliança amb aquest regne (thread-safe)
-    int existingStatus = ALLIANCE_NONE;
-    if (getAllianceInfo(maester, requesterName, NULL, NULL, &existingStatus, NULL)) {
-        if (existingStatus == ALLIANCE_ACTIVE) {
-            asprintf(&msg, YELLOW "Already allied with [%s]\n" RESET, requesterName);
-            customWrite(1, msg);
-            free(msg);
-            return;
-        }
-        // Si ja tenim PENDING nostre, ara rebem la seva petició - actualitzem IP
-    }
-    
-    // 4. Crear/actualitzar aliança com PENDING amb la IP del sol·licitant
-    // Guardem IP:Port per poder respondre directament després (PLEDGE RESPOND)
+
+    // 3. Guardar aliança PENDING amb la IP del sol·licitant (per respondre després)
     addOrUpdateAlliance(maester, requesterName, requesterIp, requesterPort, ALLIANCE_PENDING);
-    
-    // 5. Mostrar missatge a l'usuari
-    asprintf(&msg, MAGENTA "\n>>> Alliance request received from %s.\n" RESET, requesterName);
+
+    // 4. ACK FITXER (0x31): confirmem que estem llestos per rebre el segell
+    char ackData[DATA_MAX_SIZE];
+    snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
+    Frame ackFrame;
+    createFrame(&ackFrame, ACK_FILE, "", "", ackData);
+    if (sendFrame(fromSocket, &ackFrame) < 0) {
+        return;
+    }
+
+    // 5. Rebre el segell (0x02) i desar-lo a la carpeta de l'usuari
+    const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
+    mkdir(folder, 0755);
+    char sigilPath[512];
+    snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
+
+    int fd = open(sigilPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        asprintf(&msg, RED "ERROR | Cannot create sigil file [%s]\n" RESET, sigilPath);
+        customWrite(1, msg);
+        free(msg);
+        sendNack(fromSocket, maester->name, "FILE_ERROR");
+        return;
+    }
+
+    long received = 0;
+    int recvErr = 0;
+    while (received < fileSize) {
+        Frame dataFrame;
+        if (receiveFrame(fromSocket, &dataFrame) < 0 || dataFrame.type != SIGIL_SEND) {
+            recvErr = 1;
+            break;
+        }
+        uint16_t len = dataFrame.data_length;
+        if (len > 0 && write(fd, dataFrame.data, len) < 0) {
+            recvErr = 1;
+            break;
+        }
+        received += len;
+    }
+    close(fd);
+
+    // 6. Verificar md5 i respondre ACK MD5SUM (0x32)
+    int md5ok = 0;
+    if (!recvErr) {
+        char *actualMd5 = md5_file(sigilPath);
+        md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
+        free(actualMd5);
+    }
+
+    char checkData[DATA_MAX_SIZE];
+    snprintf(checkData, DATA_MAX_SIZE, "%s&%s",
+             md5ok ? "CHECK_OK" : "CHECK_KO", maester->name);
+    Frame checkFrame;
+    createFrame(&checkFrame, ACK_MD5SUM, "", "", checkData);
+    sendFrame(fromSocket, &checkFrame);
+
+    if (!md5ok) {
+        // Segell corromput: descartem la petició pendent
+        addOrUpdateAlliance(maester, requesterName, NULL, 0, ALLIANCE_NONE);
+        asprintf(&msg, RED "\n>>> Alliance request from %s discarded (sigil corrupted).\n" RESET, requesterName);
+        customWrite(1, msg);
+        free(msg);
+        customWrite(1, GREEN "$ " RESET);
+        return;
+    }
+
+    // 7. Segell OK: avisem l'usuari, que decidirà amb PLEDGE RESPOND
+    asprintf(&msg, MAGENTA "\n>>> Alliance request received from %s (sigil verified).\n" RESET, requesterName);
     customWrite(1, msg);
     free(msg);
-    
-    // Mostrar prompt de nou
     customWrite(1, GREEN "$ " RESET);
-    
-    // Per F2: no enviem ACK aquí (no hi ha transferència de sigil)
-    // L'usuari ha de fer PLEDGE RESPOND <realm> ACCEPT/REJECT
 }
 
 void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
@@ -213,8 +259,13 @@ void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
+    // Desem el segell rebut a la carpeta de fitxers de l'usuari configurada
+    // (camp 'path' del .dat), no a una ruta fixa. Creem la carpeta si no existeix.
+    const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
+    mkdir(folder, 0755);  // ignorem l'error si ja existeix (EEXIST)
+
     char sigilPath[512];
-    snprintf(sigilPath, sizeof(sigilPath), "Assets/%s.png", requesterName);
+    snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
 
     int fd = open(sigilPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) {
@@ -225,7 +276,7 @@ void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    uint16_t dataLen = ntohs(frame->data_length);
+    uint16_t dataLen = frame->data_length;  // ja en host order (deserializar_trama)
     if (write(fd, frame->data, dataLen) < 0) {
         close(fd);
         asprintf(&msg, RED "ERROR | Failed to write sigil data\n" RESET);
@@ -322,39 +373,8 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
         // Aliança acceptada! Guardar IP:Port per connexió directa futura
         addOrUpdateAlliance(maester, responderName, responderIp, responderPort, ALLIANCE_ACTIVE);
 
-        // Enviar sigil al realm que va acceptar
-        char *sigilPath = getAllianceSigil(maester, responderName);
-        if (sigilPath) {
-            int envoyIndex = reserveEnvoy(maester);
-            if (envoyIndex >= 0) {
-                IpcRequest sigilRequest;
-                IpcResponse sigilResponse;
-                memset(&sigilRequest, 0, sizeof(IpcRequest));
-
-                sigilRequest.type = IPC_SEND_SIGIL;
-                strncpy(sigilRequest.source_realm, maester->name, IPC_REALM_SIZE - 1);
-                strncpy(sigilRequest.source_ip, maester->ip, IPC_IP_SIZE - 1);
-                sigilRequest.source_port = (uint32_t)maester->port;
-                strncpy(sigilRequest.target_realm, responderName, IPC_REALM_SIZE - 1);
-                strncpy(sigilRequest.target_ip, responderIp, IPC_IP_SIZE - 1);
-                sigilRequest.target_port = (uint32_t)responderPort;
-                strncpy(sigilRequest.path, sigilPath, IPC_PATH_SIZE - 1);
-
-                asprintf(&msg, "PLEDGE SIGIL to %s", responderName);
-                setEnvoyMission(maester, envoyIndex, msg);
-                free(msg);
-
-                if (dispatchEnvoyRequest(maester, envoyIndex, &sigilRequest, &sigilResponse) < 0) {
-                    asprintf(&msg, YELLOW "Warning: Failed to send sigil to [%s]\n" RESET, responderName);
-                    customWrite(1, msg);
-                    free(msg);
-                }
-
-                releaseEnvoy(maester, envoyIndex);
-            }
-            free(sigilPath);
-        }
-
+        // El segell ja s'ha transferit i verificat durant la petició (0x01/0x02),
+        // per tant aquí només cal confirmar l'aliança.
         releaseEnvoyMissionForRealm(maester, responderName, "PLEDGE to ");
 
         asprintf(&msg, GREEN "\n>>> Alliance with %s forged successfully!\n" RESET, responderName);
@@ -379,58 +399,95 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
 // ═══════════════════════════════════════════════════════════
 void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
-    
-    // El nombre del reino solicitante viene en DATA (enviado por sendProductListRequest)
-    // frame->ip_origin contiene IP:Port, no el nombre
+
+    // El nom del regne sol·licitant ve al DATA (ip_origin porta IP:Port, no el nom)
     const char *requesterName = frame->data;
-    
-    asprintf(&msg, CYAN "Product list request from [%s]\n" RESET, requesterName);
+
+    asprintf(&msg, CYAN ">>> LIST PRODUCTS request from [%s].\n" RESET, requesterName);
     customWrite(1, msg);
     free(msg);
-    
-    // Verificar si tenim aliança amb aquest regne (por nombre, no por IP)
+
+    char myIpPort[IP_SIZE];
+    snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
+
+    // Sense aliança -> ERR_UNAUTHORIZED (0x25)
     if (!hasAlliance(maester, requesterName)) {
-        // No tenim aliança - enviar ERR_UNAUTHORIZED (0x25)
-        asprintf(&msg, RED "No alliance with [%s] - sending UNAUTHORIZED\n" RESET, requesterName);
-        customWrite(1, msg);
-        free(msg);
-        
-        char myIpPort[IP_SIZE];
-        snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
-        
         char errorData[DATA_MAX_SIZE];
         snprintf(errorData, DATA_MAX_SIZE, "AUTH&%.200s", requesterName);
-        
         Frame errorFrame;
         createFrame(&errorFrame, ERR_UNAUTHORIZED, myIpPort, frame->ip_origin, errorData);
-        
         sendFrame(fromSocket, &errorFrame);
         return;
     }
-    
-    // Construïm un catàleg compacte per a poder reutilitzar-lo a START TRADE.
-    char catalog[DATA_MAX_SIZE];
-    int written = snprintf(catalog, sizeof(catalog), "OK&%s&", maester->name);
-    if (written < 0 || written >= (int)sizeof(catalog)) {
-        catalog[0] = '\0';
-    }
-    for (int i = 0; i < maester->numProducts && written > 0 && written < (int)sizeof(catalog) - 1; i++) {
-        int added = snprintf(catalog + written, sizeof(catalog) - (size_t)written, "%s%s",
-                             maester->inventory[i].name,
-                             (i < maester->numProducts - 1) ? "|" : "");
-        if (added < 0 || written + added >= (int)sizeof(catalog)) {
-            break;
-        }
-        written += added;
+
+    // 1. Serialitzem el nostre inventari a un fitxer temporal binari
+    char tmpPath[256];
+    snprintf(tmpPath, sizeof(tmpPath), "/tmp/products_send_%s_%d_%d.db",
+             maester->name, (int)getpid(), fromSocket);
+    if (updateStockDB(tmpPath, maester) < 0) {
+        sendNack(fromSocket, maester->name, "FILE_ERROR");
+        return;
     }
 
-    asprintf(&msg, GREEN "Alliance verified with [%s] - sending cached catalog ACK\n" RESET, requesterName);
+    long fileSize = (long)maester->numProducts * (long)sizeof(AuxiliarProduct);
+    char *md5 = md5_file(tmpPath);
+    if (!md5) {
+        unlink(tmpPath);
+        sendNack(fromSocket, maester->name, "MD5_ERROR");
+        return;
+    }
+
+    // 2. Trama HEADER (0x12): FileName&FileSize&MD5SUM
+    char headerData[DATA_MAX_SIZE];
+    snprintf(headerData, DATA_MAX_SIZE, "products.db&%ld&%s", fileSize, md5);
+    free(md5);
+
+    Frame headerFrame;
+    createFrame(&headerFrame, PRODUCT_LIST_HEADER, myIpPort, requesterName, headerData);
+    if (sendFrame(fromSocket, &headerFrame) < 0) {
+        unlink(tmpPath);
+        return;
+    }
+
+    // 3. Esperem ACK FITXER (0x31) conforme el sol·licitant està llest
+    Frame ackFrame;
+    if (receiveFrame(fromSocket, &ackFrame) < 0 ||
+        ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
+        unlink(tmpPath);
+        return;
+    }
+
+    // 4. Enviem el fitxer en blocs binaris (0x13)
+    int fd = open(tmpPath, O_RDONLY);
+    if (fd < 0) {
+        unlink(tmpPath);
+        return;
+    }
+    uint8_t chunk[DATA_MAX_SIZE];
+    ssize_t bytesRead;
+    Frame dataFrame;
+    while ((bytesRead = read(fd, chunk, DATA_MAX_SIZE)) > 0) {
+        createBinaryFrame(&dataFrame, PRODUCT_LIST_DATA, myIpPort, requesterName,
+                          chunk, (uint16_t)bytesRead);
+        if (sendFrame(fromSocket, &dataFrame) < 0) {
+            close(fd);
+            unlink(tmpPath);
+            return;
+        }
+    }
+    close(fd);
+    unlink(tmpPath);
+
+    // 5. Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
+    Frame checkFrame;
+    if (receiveFrame(fromSocket, &checkFrame) == 0 &&
+        checkFrame.type == ACK_MD5SUM && strncmp(checkFrame.data, "CHECK_OK", 8) == 0) {
+        asprintf(&msg, GREEN "Products delivered to [%s].\n" RESET, requesterName);
+    } else {
+        asprintf(&msg, YELLOW "Products sent to [%s] but verification failed.\n" RESET, requesterName);
+    }
     customWrite(1, msg);
     free(msg);
-    
-    Frame ackFrame;
-    createFrame(&ackFrame, ACK_FILE, "", "", catalog);
-    sendFrame(fromSocket, &ackFrame);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -500,17 +557,20 @@ void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
 
 void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
-    static char tradeFilePath[512] = "";
-    static long totalTradeSize = 0;
-    static long receivedBytes = 0;
 
     if (!maester || !frame) {
         return;
     }
 
+    // El handler pren el control del socket en rebre la capçalera (0x14) i
+    // gestiona tot l'intercanvi de la comanda en una sola connexió.
+    if (frame->type != ORDER_REQUEST_HEADER) {
+        return;
+    }
+
+    // 1. Identificar el regne sol·licitant per IP:Port (ha de ser aliat)
     char requesterName[64];
     requesterName[0] = '\0';
-
     pthread_mutex_lock(&maester->alliances_mutex);
     for (int i = 0; i < maester->numAlliances; i++) {
         if (maester->alliances[i].ip && maester->alliances[i].port > 0) {
@@ -530,107 +590,147 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    if (frame->type == ORDER_REQUEST_HEADER) {
-        totalTradeSize = atol(frame->data);
-        receivedBytes = 0;
+    // 2. Parsejar capçalera: <FileName>&<FileSize>&<MD5SUM>
+    char fileName[128] = "";
+    long fileSize = 0;
+    char expectedMd5[64] = "";
+    if (sscanf(frame->data, "%127[^&]&%ld&%63s", fileName, &fileSize, expectedMd5) < 3) {
+        sendNack(fromSocket, maester->name, "INVALID_FORMAT");
+        return;
+    }
 
-        snprintf(tradeFilePath, sizeof(tradeFilePath), "/tmp/trade_%s_%ld.tmp",
-                 requesterName, time(NULL));
+    asprintf(&msg, CYAN ">>> Trade request from [%s] (%ld bytes).\n" RESET, requesterName, fileSize);
+    customWrite(1, msg);
+    free(msg);
 
-        int fd = open(tradeFilePath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd < 0) {
-            sendNack(fromSocket, maester->name, "FILE_ERROR");
-            return;
-        }
+    char tradeFilePath[256];
+    snprintf(tradeFilePath, sizeof(tradeFilePath), "/tmp/trade_%s_%d_%d.tmp",
+             requesterName, (int)getpid(), fromSocket);
+    int fd = open(tradeFilePath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        sendNack(fromSocket, maester->name, "FILE_ERROR");
+        return;
+    }
+
+    // 3. ACK FITXER (0x31)
+    char ackData[DATA_MAX_SIZE];
+    snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
+    Frame ackFrame;
+    createFrame(&ackFrame, ACK_FILE, "", "", ackData);
+    if (sendFrame(fromSocket, &ackFrame) < 0) {
         close(fd);
+        unlink(tradeFilePath);
+        return;
+    }
 
-        asprintf(&msg, CYAN ">>> Trade request from [%s], total size: %ld bytes\n" RESET,
-                 requesterName, totalTradeSize);
-        customWrite(1, msg);
-        free(msg);
-
-        Frame ackFrame;
-        createFrame(&ackFrame, ACK_FILE, "", "", "OK");
-        sendFrame(fromSocket, &ackFrame);
-
-    } else if (frame->type == ORDER_REQUEST_DATA) {
-        uint16_t dataLen = ntohs(frame->data_length);
-        receivedBytes += dataLen;
-
-        int fd = open(tradeFilePath, O_WRONLY | O_APPEND);
-        if (fd < 0) {
-            sendNack(fromSocket, maester->name, "FILE_ERROR");
-            return;
+    // 4. Rebre DADES (0x15) fins completar fileSize
+    long received = 0;
+    int recvErr = 0;
+    while (received < fileSize) {
+        Frame dataFrame;
+        if (receiveFrame(fromSocket, &dataFrame) < 0 || dataFrame.type != ORDER_REQUEST_DATA) {
+            recvErr = 1;
+            break;
         }
-
-        if (write(fd, frame->data, dataLen) < 0) {
-            close(fd);
-            sendNack(fromSocket, maester->name, "WRITE_ERROR");
-            return;
+        uint16_t len = dataFrame.data_length;
+        if (len > 0 && write(fd, dataFrame.data, len) < 0) {
+            recvErr = 1;
+            break;
         }
-        close(fd);
+        received += len;
+    }
+    close(fd);
 
-        int isComplete = (dataLen < DATA_MAX_SIZE);
-        if (isComplete || receivedBytes >= totalTradeSize) {
-            asprintf(&msg, CYAN ">>> Trade received from [%s], total: %ld bytes\n" RESET,
-                     requesterName, receivedBytes);
-            customWrite(1, msg);
-            free(msg);
+    // 5. Verificar md5 i enviar ACK MD5SUM (0x32)
+    int md5ok = 0;
+    if (!recvErr) {
+        char *actualMd5 = md5_file(tradeFilePath);
+        md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
+        free(actualMd5);
+    }
+    char checkData[DATA_MAX_SIZE];
+    snprintf(checkData, DATA_MAX_SIZE, "%s&%s", md5ok ? "CHECK_OK" : "CHECK_KO", maester->name);
+    Frame checkFrame;
+    createFrame(&checkFrame, ACK_MD5SUM, "", "", checkData);
+    sendFrame(fromSocket, &checkFrame);
 
-            char orderResponseData[DATA_MAX_SIZE];
-            int response_ok = 1;
+    // 6. Processar la comanda i preparar RESPOSTA (0x16)
+    char orderResponseData[DATA_MAX_SIZE];
+    int response_ok = 1;
 
-            int fd_trade = open(tradeFilePath, O_RDONLY);
-            if (fd_trade < 0) {
-                snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT|Cannot read trade file");
+    if (!md5ok) {
+        snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&CORRUPTED");
+        response_ok = 0;
+    } else {
+        int fd_trade = open(tradeFilePath, O_RDONLY);
+        if (fd_trade < 0) {
+            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&Cannot read order");
+            response_ok = 0;
+        } else {
+            char *content = NULL;
+            size_t totalContent = 0;
+            char buf[512];
+            ssize_t rd;
+            int readErr = 0;
+
+            while ((rd = read(fd_trade, buf, sizeof(buf))) > 0) {
+                char *tmp = realloc(content, totalContent + (size_t)rd + 1);
+                if (!tmp) { readErr = 1; break; }
+                content = tmp;
+                memcpy(content + totalContent, buf, (size_t)rd);
+                totalContent += (size_t)rd;
+            }
+            close(fd_trade);
+
+            if (readErr || rd < 0) {
+                free(content);
+                snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&Cannot read order");
                 response_ok = 0;
             } else {
-                char *line = NULL;
-                size_t lineLen = 0;
-
-                FILE *fp = fdopen(fd_trade, "r");
-                if (fp) {
-                    ssize_t readLen;
-                    while ((readLen = getline(&line, &lineLen, fp)) != -1) {
-                        int qty = 0;
-                        char product[128];
-
-                        if (sscanf(line, "%d x %127s", &qty, product) == 2) {
-                            if (decrementInventory(maester, product, qty) < 0) {
-                                snprintf(orderResponseData, DATA_MAX_SIZE,
-                                        "REJECT|Insufficient stock for %s", product);
-                                response_ok = 0;
-                                break;
-                            }
+                if (content) {
+                    content[totalContent] = '\0';
+                }
+                char *saveptr = NULL;
+                char *lineTok = content ? strtok_r(content, "\n", &saveptr) : NULL;
+                while (lineTok) {
+                    int qty = 0;
+                    char product[128];
+                    // El producte pot tenir espais: capturem fins al final de línia
+                    if (sscanf(lineTok, "%d x %127[^\n]", &qty, product) == 2) {
+                        if (decrementInventory(maester, product, qty) < 0) {
+                            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&OUT_OF_STOCK");
+                            response_ok = 0;
+                            break;
                         }
                     }
-                    free(line);
-                    fclose(fp);
+                    lineTok = strtok_r(NULL, "\n", &saveptr);
+                }
+                free(content);
 
-                    if (response_ok) {
-                        updateStockDB(maester->path, maester);
-                        snprintf(orderResponseData, DATA_MAX_SIZE, "OK|Trade accepted");
-                    }
-                } else {
-                    snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT|Cannot parse trade");
-                    response_ok = 0;
+                if (response_ok) {
+                    // Persistim l'inventari al fitxer d'stock real
+                    updateStockDB(maester->stockFile, maester);
+                    snprintf(orderResponseData, DATA_MAX_SIZE, "OK");
                 }
             }
-
-            Frame responseFrame;
-            createFrame(&responseFrame, ORDER_RESPONSE, "", "", orderResponseData);
-            sendFrame(fromSocket, &responseFrame);
-
-            unlink(tradeFilePath);
-            tradeFilePath[0] = '\0';
-            totalTradeSize = 0;
-            receivedBytes = 0;
-        } else {
-            Frame ackFrame;
-            createFrame(&ackFrame, ACK_FILE, "", "", "OK");
-            sendFrame(fromSocket, &ackFrame);
         }
     }
+
+    // 7. RESPOSTA A COMANDA (0x16)
+    Frame responseFrame;
+    createFrame(&responseFrame, ORDER_RESPONSE, "", "", orderResponseData);
+    sendFrame(fromSocket, &responseFrame);
+
+    unlink(tradeFilePath);
+
+    if (response_ok) {
+        asprintf(&msg, GREEN ">>> Order from [%s] processed. Stock updated.\n" RESET, requesterName);
+    } else {
+        asprintf(&msg, YELLOW ">>> Order from [%s] rejected.\n" RESET, requesterName);
+    }
+    customWrite(1, msg);
+    free(msg);
+    customWrite(1, GREEN "$ " RESET);
 }
 
 void handleOrderResponse(Maester *maester, Frame *frame, int fromSocket) {

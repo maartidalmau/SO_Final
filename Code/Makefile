@@ -1,8 +1,12 @@
-CFLAGS = -Wextra -Wall -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
+CFLAGS = -Wextra -Wall -MMD -MP -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
 LDFLAGS = -lpthread
 
-maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o
-	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o -o Maester $(CFLAGS) $(LDFLAGS)
+# Auto-generated header dependencies (.d files from -MMD).
+# Garanteix que en editar qualsevol .h es recompilin tots els .o afectats.
+-include $(wildcard *.d)
+
+maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o
+	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o -o Maester $(CFLAGS) $(LDFLAGS)
 
 maester.o: src/maester.c include/core/dataStructures.h include/core/utils.h include/console/console.h include/network/server.h include/network/client.h include/network/envoy.h
 	gcc -c -g src/maester.c -o maester.o $(CFLAGS)
@@ -52,8 +56,11 @@ network_ipc.o: src/network/transport/ipc.c include/network/ipc.h include/network
 semaphore_v2.o: src/semaphore_v2.c include/core/semaphore_v2.h
 	gcc -c -g src/semaphore_v2.c -o semaphore_v2.o $(CFLAGS)
 
+core_md5.o: src/core/md5.c include/core/md5.h
+	gcc -c -g src/core/md5.c -o core_md5.o $(CFLAGS)
+
 clean:
-	rm -f *.o Maester
+	rm -f *.o *.d Maester
 
 valgrind: maester
 	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester $(ARGS)

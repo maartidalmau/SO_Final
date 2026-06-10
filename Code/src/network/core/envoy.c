@@ -28,6 +28,9 @@ static IpcResponse executeEnvoyRequest(const IpcRequest *request) {
         case IPC_SEND_TRADE_FILE:
             envoySendTradeFile(request, &response);
             break;
+        case IPC_SEND_PING:
+            envoySendPing(request, &response);
+            break;
         case IPC_SHUTDOWN:
             response.status = IPC_STATUS_OK;
             response.result_code = 0;

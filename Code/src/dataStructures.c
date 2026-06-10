@@ -4,6 +4,7 @@
 void initMaester(Maester* m) {
     m->name = NULL;
     m->path = NULL;
+    m->stockFile = NULL;
     m->envoys = 0;
     m->ip = NULL;
     m->port = 0;
@@ -216,6 +217,7 @@ void destroyMaester(Maester *maester) {
     // Free maester info
     safeFree((void**)&maester->name);
     safeFree((void**)&maester->path);
+    safeFree((void**)&maester->stockFile);
     safeFree((void**)&maester->ip);
 
     // Free inventory
@@ -362,6 +364,46 @@ int updateRemoteCatalog(Maester *maester, const char *realmName, const char *ser
 
     free(copy);
     return 0;
+}
+
+// Llegeix un fitxer binari d'inventari (AuxiliarProduct) rebut d'un aliat i
+// actualitza el catàleg remot (només noms) per a poder validar-los a START TRADE.
+int cacheRemoteCatalogFromFile(Maester *maester, const char *realmName, const char *filePath) {
+    if (!maester || !realmName || !filePath) {
+        return -1;
+    }
+
+    int fd = open(filePath, O_RDONLY);
+    if (fd < 0) {
+        return -1;
+    }
+
+    char *serialized = NULL;
+    size_t total = 0;
+    AuxiliarProduct aux;
+
+    while (read(fd, &aux, sizeof(AuxiliarProduct)) == (ssize_t)sizeof(AuxiliarProduct)) {
+        aux.name[sizeof(aux.name) - 1] = '\0';
+        size_t nameLen = strlen(aux.name);
+        char *tmp = realloc(serialized, total + nameLen + 2);  // nom + '|' + '\0'
+        if (!tmp) {
+            free(serialized);
+            close(fd);
+            return -1;
+        }
+        serialized = tmp;
+        if (total > 0) {
+            serialized[total++] = '|';
+        }
+        memcpy(serialized + total, aux.name, nameLen);
+        total += nameLen;
+        serialized[total] = '\0';
+    }
+    close(fd);
+
+    int rc = updateRemoteCatalog(maester, realmName, serialized ? serialized : "");
+    free(serialized);
+    return rc;
 }
 
 void endAndCleanEnvoys(Maester *maester) {

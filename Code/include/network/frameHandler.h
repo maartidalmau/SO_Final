@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 
 void processFrame(Maester *maester, Frame *frame, int fromSocket);

@@ -82,7 +82,8 @@ typedef struct {
 typedef struct {
     // Maester information
     char *name;
-    char *path;
+    char *path;        // carpeta de fitxers de l'usuari (2a línia del .dat)
+    char *stockFile;   // ruta del fitxer d'inventari binari (argv[2]), per persistir
     int envoys;
     EnvoyPInfo envoyPInfo;
     char *ip;
@@ -140,6 +141,8 @@ void endAndCleanEnvoys(Maester *maester);
 RemoteCatalog *findRemoteCatalog(Maester *maester, const char *realmName);
 
 int updateRemoteCatalog(Maester *maester, const char *realmName, const char *serializedProducts);
+
+int cacheRemoteCatalogFromFile(Maester *maester, const char *realmName, const char *filePath);
 
 int decrementInventory(Maester *maester, const char *productName, int quantity);
 

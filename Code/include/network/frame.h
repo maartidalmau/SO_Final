@@ -37,6 +37,8 @@
 
 void createFrame(Frame *frame, uint8_t type, const char *origin, const char *destination, const char *data);
 
+void createBinaryFrame(Frame *frame, uint8_t type, const char *origin, const char *destination, const void *data, uint16_t length);
+
 int sendNack(int fd, const char *realmName, const char *errorCode);
 
 int validateChecksum(const Frame *frame);

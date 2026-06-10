@@ -157,6 +157,15 @@ int commandHandler(char **command, Maester *maester) {
             customWrite(1, CYAN "Usage: ENVOY STATUS\n" RESET);
         }
     }
+    // PING
+    else if (strcasecmp(tokens[0], "PING") == 0) {
+        if (count == 2) {
+            sendPing(maester, tokens[1]);
+        } else {
+            customWrite(1, RED "Unknown command\n" RESET);
+            customWrite(1, CYAN "Usage: PING <realm>\n" RESET);
+        }
+    }
     // EXIT
     else if (strcasecmp(tokens[0], "EXIT") == 0) {
         if (count == 1) {
@@ -176,6 +185,7 @@ int commandHandler(char **command, Maester *maester) {
         customWrite(1, CYAN "PLEDGE RESPOND <realm> <ACCEPT|REJECT>" RESET " - Respond to a pledge\n");
         customWrite(1, CYAN "START TRADE <realm>" RESET " - Start trade session with realm\n");
         customWrite(1, CYAN "ENVOY STATUS" RESET " - Check envoy status\n");
+        customWrite(1, CYAN "PING <realm>" RESET " - Ping a realm and measure latency\n");
         customWrite(1, CYAN "EXIT" RESET " - Exit the program\n");
         customWrite(1, MAGENTA "==========================\n\n" RESET);
     }

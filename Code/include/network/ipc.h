@@ -17,6 +17,7 @@ typedef enum {
     IPC_LIST_PRODUCTS_REMOTE = 3,
     IPC_SEND_SIGIL = 4,
     IPC_SEND_TRADE_FILE = 5,
+    IPC_SEND_PING = 6,
     IPC_SHUTDOWN = 255
 } IpcRequestType;
 

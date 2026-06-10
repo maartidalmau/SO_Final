@@ -202,16 +202,29 @@ int handleSendCommand(Trade *trade, Maester *maester) {
             return 0;
         }
 
-        char *routeIp = NULL;
-        int routePort = 0;
-        if (!getRouteInfo(maester, trade->kingdom, &routeIp, &routePort)) {
-            releaseEnvoy(maester, envoyIndex);
-            char *msg;
-            asprintf(&msg, RED "ERROR | No route to realm [%s]\n" RESET, trade->kingdom);
-            customWrite(1, msg);
-            free(msg);
-            free(fileName);
-            return 0;
+        // Si som aliats, anem directes a la seva IP; si no, per la taula de rutes.
+        char *targetIp = NULL;
+        int targetPort = 0;
+        char *allyIp = NULL;
+        int allyPort = 0;
+        int allyStatus = ALLIANCE_NONE;
+        if (getAllianceInfo(maester, trade->kingdom, &allyIp, &allyPort, &allyStatus, NULL) &&
+            allyStatus == ALLIANCE_ACTIVE && allyIp && allyPort > 0) {
+            targetIp = allyIp;        // prenem la propietat del punter
+            targetPort = allyPort;
+        } else {
+            if (allyIp) free(allyIp);
+            if (!getRouteInfo(maester, trade->kingdom, &targetIp, &targetPort)) {
+                if (!getRouteInfo(maester, NULL, &targetIp, &targetPort)) {
+                    releaseEnvoy(maester, envoyIndex);
+                    char *msg;
+                    asprintf(&msg, RED "ERROR | No route to realm [%s]\n" RESET, trade->kingdom);
+                    customWrite(1, msg);
+                    free(msg);
+                    free(fileName);
+                    return 0;
+                }
+            }
         }
 
         IpcRequest request;
@@ -223,8 +236,8 @@ int handleSendCommand(Trade *trade, Maester *maester) {
         strncpy(request.source_ip, maester->ip, IPC_IP_SIZE - 1);
         request.source_port = (uint32_t)maester->port;
         strncpy(request.target_realm, trade->kingdom, IPC_REALM_SIZE - 1);
-        strncpy(request.target_ip, routeIp, IPC_IP_SIZE - 1);
-        request.target_port = (uint32_t)routePort;
+        strncpy(request.target_ip, targetIp, IPC_IP_SIZE - 1);
+        request.target_port = (uint32_t)targetPort;
         strncpy(request.path, fileName, IPC_PATH_SIZE - 1);
 
         char *msg;

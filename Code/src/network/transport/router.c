@@ -1,5 +1,57 @@
 #include "router.h"
 
+#include <sys/select.h>
+
+static int writeAllBytes(int fd, const uint8_t *buf, size_t n) {
+    size_t total = 0;
+    while (total < n) {
+        ssize_t w = write(fd, buf + total, n - total);
+        if (w <= 0) {
+            return -1;
+        }
+        total += (size_t)w;
+    }
+    return 0;
+}
+
+// Relay transparent bidireccional entre dues connexions fins que una es tanca.
+// Converteix el node intermedi en una tuberia: així les comunicacions
+// origen<->destí (handshake d'aliança, transferència de fitxers, PING...)
+// travessen els hops com si fos una connexió directa, sense modificar les
+// trames. Encadena de forma recursiva amb múltiples salts.
+static void relayBidirectional(int a, int b) {
+    uint8_t buf[1024];
+    int maxfd = (a > b ? a : b) + 1;
+
+    for (;;) {
+        fd_set readfds;
+        struct timeval tv;
+
+        FD_ZERO(&readfds);
+        FD_SET(a, &readfds);
+        FD_SET(b, &readfds);
+        tv.tv_sec = 125;   // > 2 min (timeout del protocol); evita relays penjats
+        tv.tv_usec = 0;
+
+        int sel = select(maxfd, &readfds, NULL, NULL, &tv);
+        if (sel <= 0) {
+            break;  // timeout o error: tanquem el relay
+        }
+
+        if (FD_ISSET(a, &readfds)) {
+            ssize_t n = read(a, buf, sizeof(buf));
+            if (n <= 0 || writeAllBytes(b, buf, (size_t)n) < 0) {
+                break;
+            }
+        }
+        if (FD_ISSET(b, &readfds)) {
+            ssize_t n = read(b, buf, sizeof(buf));
+            if (n <= 0 || writeAllBytes(a, buf, (size_t)n) < 0) {
+                break;
+            }
+        }
+    }
+}
 
 int isDestination(Maester *maester, const char *destination) {
     if (!maester || !destination) {
@@ -199,8 +251,11 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         sendNack(fromSocket, maester->name, "SEND_FAILED");
         return -1;
     }
-    
+
+    // La primera trama ja s'ha reexpedit; ara fem de relay transparent per a
+    // la resta de la sessió (respostes, ACKs, dades del fitxer, etc.).
+    relayBidirectional(fromSocket, fd_hop);
+
     close(fd_hop);
-    
     return 0;
 }

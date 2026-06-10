@@ -42,6 +42,8 @@ int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
         return 1;
     }
 
+    (*maester)->stockFile = strdup(stockFile);
+
     running = &((*maester)->running);
 
     return 0;
@@ -62,6 +64,14 @@ int envoysUtilities(Maester *maester){
 
 int main(int argc, char *argv[]) {
     char *msg;
+
+    // Ignorar SIGPIPE globalment: un write() sobre un socket/pipe amb el peer
+    // tancat (caiguda d'un Maester, ACK que no arriba, envoy mort...) entregaria
+    // SIGPIPE i mataria el procés en silenci. Així el detectem via el codi
+    // d'error de write()/read() i mantenim el sistema estable. Els envoys forked
+    // hereten aquesta disposició.
+    signal(SIGPIPE, SIG_IGN);
+
     if (argc != 3) {
         asprintf(&msg, "%sERROR | Use %s <Maester file> <Stock file>%s\n", RED, argv[0], RESET);
         customWrite(1, msg);

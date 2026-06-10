@@ -38,6 +38,36 @@ void createFrame(Frame *frame, uint8_t type, const char *origin, const char *des
     frame->checksum = calcChecksum(frame);
 }
 
+void createBinaryFrame(Frame *frame, uint8_t type, const char *origin, const char *destination, const void *data, uint16_t length) {
+    if (!frame) return;
+
+    // Initialize the frame with zeros (padding inclòs)
+    memset(frame, 0, sizeof(Frame));
+
+    frame->type = type;
+
+    if (origin) {
+        strncpy(frame->ip_origin, origin, IP_SIZE - 1);
+        frame->ip_origin[IP_SIZE - 1] = '\0';
+    }
+
+    if (destination) {
+        strncpy(frame->ip_destination, destination, IP_SIZE - 1);
+        frame->ip_destination[IP_SIZE - 1] = '\0';
+    }
+
+    // Còpia segura de dades BINÀRIES: longitud explícita, sense strlen.
+    if (length > DATA_MAX_SIZE) {
+        length = DATA_MAX_SIZE;
+    }
+    if (data && length > 0) {
+        memcpy(frame->data, data, length);
+    }
+    frame->data_length = length;  // sempre en host order (com createFrame)
+
+    frame->checksum = calcChecksum(frame);
+}
+
 int sendNack(int fd, const char *realmName, const char *errorCode) {
     if (fd < 0 || !realmName) {
         return -1;

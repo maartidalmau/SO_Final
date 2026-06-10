@@ -353,12 +353,6 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     return 0;
 }
 
-
-
-// ═══════════════════════════════════════════════════════════
-// STUBS: Funciones pendientes de implementar
-// ═══════════════════════════════════════════════════════════
-
 int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     if (!request || !response) {
         return -1;

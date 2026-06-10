@@ -254,8 +254,7 @@ int handleSendCommand(Trade *trade, Maester *maester) {
         setEnvoyMission(maester, envoyIndex, msg);
         free(msg);
 
-        if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) < 0 ||
-            response.status != IPC_STATUS_OK) {
+        if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) < 0 || response.status != IPC_STATUS_OK) {
             asprintf(&msg, RED "ERROR | Failed to send trade to [%s]\n" RESET, trade->kingdom);
             customWrite(1, msg);
             free(msg);
@@ -271,8 +270,7 @@ int handleSendCommand(Trade *trade, Maester *maester) {
             }
             updateStockDB(maester->stockFile, maester);
 
-            asprintf(&msg, GREEN ">>> Order accepted by %s. Goods received, inventory updated.\n" RESET,
-                     trade->kingdom);
+            asprintf(&msg, GREEN ">>> Order accepted by %s. Goods received, inventory updated.\n" RESET,trade->kingdom);
             customWrite(1, msg);
             free(msg);
         }
@@ -463,9 +461,7 @@ void startTrade(Trade *trade, Maester *maester) {
             } else {
                 customWrite(1, CYAN "--- Current Trade List ---\n" RESET);
                 for (int i = 0; i < trade->numProducts; i++) {
-                    asprintf(&msg, "  %d x %s\n", 
-                            trade->products[i].amount, 
-                            trade->products[i].name);
+                    asprintf(&msg, "  %d x %s\n", trade->products[i].amount, trade->products[i].name);
                     customWrite(1, msg);
                     free(msg);
                 }

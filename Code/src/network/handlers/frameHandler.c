@@ -1,9 +1,6 @@
 #include "frameHandler.h"
 #include "md5.h"
 
-// Crea una carpeta i totes les seves carpetes pare (com "mkdir -p"), ja que
-// mkdir() no és recursiu i les rutes poden tenir nivells ("../files/x/y").
-// No usem system/popen (prohibits): anem creant component a component.
 static void mkdirRecursive(const char *path) {
     if (!path || !*path) {
         return;
@@ -21,7 +18,7 @@ static void mkdirRecursive(const char *path) {
     for (char *p = tmp + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';
-            mkdir(tmp, 0755);   // si ja existeix, ignorem l'error
+            mkdir(tmp, 0755);  
             *p = '/';
         }
     }
@@ -100,10 +97,6 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
         forwardFrame(maester, frame, fromSocket);
     }
 }
-
-// ═══════════════════════════════════════════════════════════
-// HANDLERS BÁSICOS
-// ═══════════════════════════════════════════════════════════
 
 void handleDisconnect(Maester *maester, Frame *frame) {
     

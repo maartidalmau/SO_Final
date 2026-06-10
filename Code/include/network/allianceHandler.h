@@ -19,4 +19,6 @@ void setAllianceSigil(Maester *maester, const char *realmName, const char *sigil
 
 char* getAllianceSigil(Maester *maester, const char *realmName);
 
+void sweepPledgeTimeouts(Maester *maester);
+
 #endif // ALLIANCE_HANDLER_H

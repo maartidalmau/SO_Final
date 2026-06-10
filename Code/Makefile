@@ -6,7 +6,7 @@ LDFLAGS = -lpthread
 -include $(wildcard *.d)
 
 maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o
-	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o -o Maester $(CFLAGS) $(LDFLAGS)
+	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o -o maester $(CFLAGS) $(LDFLAGS)
 
 maester.o: src/maester.c include/core/dataStructures.h include/core/utils.h include/console/console.h include/network/server.h include/network/client.h include/network/envoy.h
 	gcc -c -g src/maester.c -o maester.o $(CFLAGS)
@@ -60,41 +60,41 @@ core_md5.o: src/core/md5.c include/core/md5.h
 	gcc -c -g src/core/md5.c -o core_md5.o $(CFLAGS)
 
 clean:
-	rm -f *.o *.d Maester
+	rm -f *.o *.d maester Maester
 
 valgrind: maester
-	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester $(ARGS)
+	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester $(ARGS)
 
 # GLOBAL TESTS
 A: maester
-	./Maester ../Configs/A-Dragonstone.dat ../Assets/stark_stock.db
+	./maester ../Configs/A-Dragonstone.dat ../Assets/stark_stock.db
 
 B: maester
-	./Maester ../Configs/B-KingsLanding.dat ../Assets/baratheon_stock.db
+	./maester ../Configs/B-KingsLanding.dat ../Assets/baratheon_stock.db
 
 C: maester
-	./Maester ../Configs/C-TheVale.dat ../Assets/arryn_stock.db
+	./maester ../Configs/C-TheVale.dat ../Assets/arryn_stock.db
 
 D: maester
-	./Maester ../Configs/D-Driftmark.dat ../Assets/velaryon_stock.db
+	./maester ../Configs/D-Driftmark.dat ../Assets/velaryon_stock.db
 
 E: maester
-	./Maester ../Configs/E-Riverrun.dat ../Assets/tully_stock.db
+	./maester ../Configs/E-Riverrun.dat ../Assets/tully_stock.db
 
 # GLOBBAL TEST with Valgrind
 A-valgrind: maester
-	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester ../Configs/A-Dragonstone.dat ../Assets/stark_stock.db
+	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester ../Configs/A-Dragonstone.dat ../Assets/stark_stock.db
 
 B-valgrind: maester
-	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester ../Configs/B-KingsLanding.dat ../Assets/baratheon_stock.db
+	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester ../Configs/B-KingsLanding.dat ../Assets/baratheon_stock.db
 
 C-valgrind: maester
-	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester ../Configs/C-TheVale.dat ../Assets/arryn_stock.db
+	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester ../Configs/C-TheVale.dat ../Assets/arryn_stock.db
 
 D-valgrind: maester
-	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester ../Configs/D-Driftmark.dat ../Assets/velaryon_stock.db
+	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester ../Configs/D-Driftmark.dat ../Assets/velaryon_stock.db
 
 E-valgrind: maester
-	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./Maester ../Configs/E-Riverrun.dat ../Assets/tully_stock.db
+	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester ../Configs/E-Riverrun.dat ../Assets/tully_stock.db
 
 .PHONY: clean valgrind A B C D E A-valgrind B-valgrind C-valgrind D-valgrind E-valgrind

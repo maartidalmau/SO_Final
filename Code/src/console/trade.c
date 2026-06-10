@@ -261,11 +261,20 @@ int handleSendCommand(Trade *trade, Maester *maester) {
             free(msg);
             releaseEnvoy(maester, envoyIndex);
         } else {
-            asprintf(&msg, GREEN "Trade sent to %s. Awaiting response...\n" RESET, trade->kingdom);
-            customWrite(1, msg);
-            free(msg);
             releaseEnvoy(maester, envoyIndex);
             success = 1;
+
+            // Comanda acceptada: rebem els béns -> actualitzem el NOSTRE inventari
+            // (l'aliat ja ha decrementat el seu) i el persistim a stock.db.
+            for (int i = 0; i < trade->numProducts; i++) {
+                incrementInventory(maester, trade->products[i].name, trade->products[i].amount);
+            }
+            updateStockDB(maester->stockFile, maester);
+
+            asprintf(&msg, GREEN ">>> Order accepted by %s. Goods received, inventory updated.\n" RESET,
+                     trade->kingdom);
+            customWrite(1, msg);
+            free(msg);
         }
 
         if (targetIp) free(targetIp);
@@ -285,14 +294,15 @@ int handleAddCommand(Trade *trade, char *productName, int quantity, Maester *mae
         return trade->numProducts;
     }
 
+    // Només es poden afegir productes del catàleg de l'ALIAT (obtingut amb
+    // LIST PRODUCTS), no del propi inventari.
     RemoteCatalog *catalog = getTradeCatalog(trade, maester);
-    if (catalog) {
-        if (!isProductInRemoteCatalog(productName, catalog)) {
-            customWrite(1, RED "Product not in remote catalog.\n" RESET);
-            return trade->numProducts;
-        }
-    } else if (!isProductInInventory(productName, maester)) {
-        customWrite(1, RED "Product not in inventory.\n" RESET);
+    if (!catalog || catalog->numProducts == 0) {
+        customWrite(1, RED "No products available. Use LIST PRODUCTS first.\n" RESET);
+        return trade->numProducts;
+    }
+    if (!isProductInRemoteCatalog(productName, catalog)) {
+        customWrite(1, RED "Product not in remote catalog.\n" RESET);
         return trade->numProducts;
     }
 
@@ -402,11 +412,9 @@ void startTrade(Trade *trade, Maester *maester) {
     customWrite(1, msg);
     free(msg);
 
-    if (getTradeCatalog(trade, maester) != NULL) {
-        displayTradeCatalog(trade, maester);
-    } else {
-        displayAvailableProducts(maester);
-    }
+    // Només mostrem el catàleg de l'ALIAT (obtingut amb LIST PRODUCTS). Si encara
+    // no s'ha demanat, displayTradeCatalog avisa "Use LIST PRODUCTS first".
+    displayTradeCatalog(trade, maester);
 
     while (!exit && maester->running) {
         customWrite(1, GREEN "(trade)> " RESET);

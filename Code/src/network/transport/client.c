@@ -343,6 +343,13 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     }
     addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_PENDING);
     setAllianceSigil(maester, realmName, sigilPath);
+
+    // El segell ja s'ha lliurat; l'envoy queda ON_MISSION esperant la decisió
+    // de l'aliat (que arribarà de forma asíncrona al servidor amb el 0x03).
+    asprintf(&msg, GREEN "Pledge sent to %s. Envoy %d is on its way.\n" RESET,
+             realmName, envoyIndex + 1);
+    customWrite(1, msg);
+    free(msg);
     return 0;
 }
 

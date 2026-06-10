@@ -20,6 +20,24 @@ void rsiCtrlC() {
     }
 }
 
+// Vigilant de timeouts: cada pocs segons revisa les peticions d'aliança
+// PENDING i allibera l'envoy de les que han superat els 2 minuts sense resposta.
+void *timeoutThread(void *arg) {
+    Maester *maester = (Maester *)arg;
+    while (maester->running) {
+        // Dormim en trossos d'1s per reaccionar ràpid a la sortida (no és espera
+        // activa: sleep() bloqueja sense consumir CPU).
+        for (int s = 0; s < 5 && maester->running; s++) {
+            sleep(1);
+        }
+        if (!maester->running) {
+            break;
+        }
+        sweepPledgeTimeouts(maester);
+    }
+    return NULL;
+}
+
 int loadMaesterData(Maester **maester, char *configFile, char *stockFile) {
     char *msg;
     *maester = malloc(sizeof(Maester));
@@ -99,6 +117,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Crear thread vigilant de timeouts de pledges (allibera envoys caducats)
+    pthread_t timeoutThreadID;
+    int timeoutThreadOk = (pthread_create(&timeoutThreadID, NULL, timeoutThread, (void *)maester) == 0);
+
     if (maester->running) {
         consoleLogic(maester);
     }
@@ -111,6 +133,9 @@ int main(int argc, char *argv[]) {
         maester->serverSocket = -1;
     }
     pthread_join(serverThreadID, NULL);
+    if (timeoutThreadOk) {
+        pthread_join(timeoutThreadID, NULL);
+    }
     endAndCleanEnvoys(maester);
     cerrarWorkers(maester);
 

@@ -1,4 +1,5 @@
 #include "allianceHandler.h"
+#include "envoy.h"
 
 
 int hasAlliance(Maester *maester, const char *realmName) {
@@ -162,4 +163,47 @@ char* getAllianceSigil(Maester *maester, const char *realmName) {
     pthread_mutex_unlock(&maester->alliances_mutex);
 
     return sigilPath;
+}
+
+// Revisa les peticions d'aliança PENDING i, si han superat el timeout (2 min)
+// sense resposta, marca l'aliança com FAILED i ALLIBERA l'envoy que esperava.
+void sweepPledgeTimeouts(Maester *maester) {
+    if (!maester) {
+        return;
+    }
+
+    time_t now = time(NULL);
+
+    // 1) Sota el mutex: recollim els noms dels pledges PENDING caducats (no
+    //    canviem l'estat encara per no anidar locks amb releaseEnvoy...).
+    char **candidates = NULL;
+    int count = 0;
+    pthread_mutex_lock(&maester->alliances_mutex);
+    for (int i = 0; i < maester->numAlliances; i++) {
+        if (maester->alliances[i].status == ALLIANCE_PENDING &&
+            difftime(now, maester->alliances[i].requestTime) > ALLIANCE_TIMEOUT_SECONDS) {
+            char **tmp = realloc(candidates, sizeof(char *) * (count + 1));
+            if (tmp) {
+                candidates = tmp;
+                candidates[count++] = strdup(maester->alliances[i].name);
+            }
+        }
+    }
+    pthread_mutex_unlock(&maester->alliances_mutex);
+
+    // 2) Fora del mutex: si hi havia un envoy nostre en missió (pledge SORTINT),
+    //    l'alliberem i marquem l'aliança com FAILED. Si no hi ha envoy (petició
+    //    ENTRANT), no la toquem aquí.
+    for (int i = 0; i < count; i++) {
+        if (releaseEnvoyMissionForRealm(maester, candidates[i], "PLEDGE to ")) {
+            addOrUpdateAlliance(maester, candidates[i], NULL, 0, ALLIANCE_FAILED);
+            char *msg;
+            asprintf(&msg, RED "\n>>> Pledge to %s has failed (TIMEOUT).\n" RESET, candidates[i]);
+            customWrite(1, msg);
+            free(msg);
+            customWrite(1, GREEN "$ " RESET);
+        }
+        free(candidates[i]);
+    }
+    free(candidates);
 }

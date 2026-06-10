@@ -146,6 +146,8 @@ int cacheRemoteCatalogFromFile(Maester *maester, const char *realmName, const ch
 
 int decrementInventory(Maester *maester, const char *productName, int quantity);
 
+int incrementInventory(Maester *maester, const char *productName, int quantity);
+
 int updateStockDB(const char *filename, Maester *maester);
 
 #endif

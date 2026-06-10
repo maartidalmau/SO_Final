@@ -1,6 +1,33 @@
 #include "frameHandler.h"
 #include "md5.h"
 
+// Crea una carpeta i totes les seves carpetes pare (com "mkdir -p"), ja que
+// mkdir() no és recursiu i les rutes poden tenir nivells ("../files/x/y").
+// No usem system/popen (prohibits): anem creant component a component.
+static void mkdirRecursive(const char *path) {
+    if (!path || !*path) {
+        return;
+    }
+    char tmp[512];
+    size_t n = strlen(path);
+    if (n >= sizeof(tmp)) {
+        n = sizeof(tmp) - 1;
+    }
+    memcpy(tmp, path, n);
+    tmp[n] = '\0';
+    if (n > 0 && tmp[n - 1] == '/') {
+        tmp[n - 1] = '\0';
+    }
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(tmp, 0755);   // si ja existeix, ignorem l'error
+            *p = '/';
+        }
+    }
+    mkdir(tmp, 0755);
+}
+
 void processFrame(Maester *maester, Frame *frame, int fromSocket) {
     if (!maester || !frame) {
         return;
@@ -175,7 +202,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     if (*folder == '\0') {
         folder = ".";
     }
-    mkdir(folder, 0755);  // si ja existeix, ignorem l'error
+    mkdirRecursive(folder);  // crea tots els nivells de la ruta
 
     char sigilPath[512];
     snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
@@ -276,7 +303,7 @@ void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
     if (*folder == '\0') {
         folder = ".";
     }
-    mkdir(folder, 0755);  // ignorem l'error si ja existeix (EEXIST)
+    mkdirRecursive(folder);  // crea tots els nivells de la ruta
 
     char sigilPath[512];
     snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);

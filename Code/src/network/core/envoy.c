@@ -1,8 +1,10 @@
+#define _GNU_SOURCE
 #include "envoy.h"
 #include "client.h"
 #include "utils.h"
 
 #include <signal.h>
+#include <strings.h>
 
 static IpcResponse executeEnvoyRequest(const IpcRequest *request) {
     IpcResponse response;
@@ -170,24 +172,36 @@ void setEnvoyMission(Maester *maester, int envoyIndex, const char *mission) {
     pthread_mutex_unlock(&maester->workersInfo->workers_mutex);
 }
 
-void releaseEnvoyMissionForRealm(Maester *maester, const char *realmName, const char *missionPrefix) {
+int releaseEnvoyMissionForRealm(Maester *maester, const char *realmName, const char *missionPrefix) {
     if (!maester || !realmName || !missionPrefix) {
-        return;
+        return 0;
     }
 
+    // Construïm la missió esperada ("PLEDGE to <realm>") i la comparem de forma
+    // INSENSIBLE a majúscules: el nom que va escriure l'usuari pot diferir en
+    // capitalització del nom canònic que arriba a la resposta (p. ex.
+    // "Kingslanding" vs "KingsLanding"), i abans no s'alliberava l'envoy.
+    char *expected = NULL;
+    asprintf(&expected, "%s%s", missionPrefix, realmName);
+    if (!expected) {
+        return 0;
+    }
+
+    int released = 0;
     pthread_mutex_lock(&maester->workersInfo->workers_mutex);
     for (int i = 0; i < maester->envoys; i++) {
-        if (!maester->envoyMissions[i]) {
-            continue;
-        }
-        if (strstr(maester->envoyMissions[i], missionPrefix) == maester->envoyMissions[i] &&
-            strstr(maester->envoyMissions[i], realmName) != NULL) {
+        if (maester->envoyMissions[i] &&
+            strcasecmp(maester->envoyMissions[i], expected) == 0) {
             maester->envoysAvailable[i] = 1;
             safeFree((void **)&maester->envoyMissions[i]);
+            released = 1;
             break;
         }
     }
     pthread_mutex_unlock(&maester->workersInfo->workers_mutex);
+
+    free(expected);
+    return released;
 }
 
 int dispatchEnvoyRequest(Maester *maester, int envoyIndex, const IpcRequest *request, IpcResponse *response) {

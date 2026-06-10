@@ -451,6 +451,42 @@ int decrementInventory(Maester *maester, const char *productName, int quantity) 
     return -1;
 }
 
+int incrementInventory(Maester *maester, const char *productName, int quantity) {
+    if (!maester || !productName || quantity <= 0) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&maester->inventory_mutex);
+
+    // Si ja el tenim, només augmentem la quantitat (conservem el pes)
+    for (int i = 0; i < maester->numProducts; i++) {
+        if (strcasecmp(maester->inventory[i].name, productName) == 0) {
+            maester->inventory[i].amount += quantity;
+            pthread_mutex_unlock(&maester->inventory_mutex);
+            return 0;
+        }
+    }
+
+    // Si no el teníem, l'afegim com a producte nou (pes desconegut -> 0)
+    Product *tmp = realloc(maester->inventory, (maester->numProducts + 1) * sizeof(Product));
+    if (!tmp) {
+        pthread_mutex_unlock(&maester->inventory_mutex);
+        return -1;
+    }
+    maester->inventory = tmp;
+    maester->inventory[maester->numProducts].name = strdup(productName);
+    if (!maester->inventory[maester->numProducts].name) {
+        pthread_mutex_unlock(&maester->inventory_mutex);
+        return -1;
+    }
+    maester->inventory[maester->numProducts].amount = quantity;
+    maester->inventory[maester->numProducts].weight = 0.0f;
+    maester->numProducts++;
+
+    pthread_mutex_unlock(&maester->inventory_mutex);
+    return 0;
+}
+
 int updateStockDB(const char *filename, Maester *maester) {
     if (!filename || !maester) {
         return -1;

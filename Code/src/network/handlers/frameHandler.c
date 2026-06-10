@@ -166,9 +166,17 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 5. Rebre el segell (0x02) i desar-lo a la carpeta de l'usuari
+    // 5. Rebre el segell (0x02) i desar-lo a la carpeta de l'usuari.
+    // Tractem la ruta com a RELATIVA al working directory: "/a" -> "./a".
     const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
-    mkdir(folder, 0755);
+    while (*folder == '/') {
+        folder++;   // saltem les barres inicials: "/a" passa a "a"
+    }
+    if (*folder == '\0') {
+        folder = ".";
+    }
+    mkdir(folder, 0755);  // si ja existeix, ignorem l'error
+
     char sigilPath[512];
     snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
 
@@ -259,9 +267,15 @@ void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // Desem el segell rebut a la carpeta de fitxers de l'usuari configurada
-    // (camp 'path' del .dat), no a una ruta fixa. Creem la carpeta si no existeix.
+    // Desem el segell a la carpeta de l'usuari (camp 'path' del .dat), tractada
+    // com a RELATIVA al working directory: "/a" -> "./a". Creem la carpeta.
     const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
+    while (*folder == '/') {
+        folder++;   // saltem les barres inicials
+    }
+    if (*folder == '\0') {
+        folder = ".";
+    }
     mkdir(folder, 0755);  // ignorem l'error si ja existeix (EEXIST)
 
     char sigilPath[512];

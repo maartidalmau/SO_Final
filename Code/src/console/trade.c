@@ -40,11 +40,20 @@ int checkRealm(Trade *trade, Maester *maester) {
         return 0;
     }
 
+    // Vàlid si el regne és a la taula de rutes...
     for (int i = 0; i < maester->numRoutes; i++) {
         if (strcasecmp(trade->kingdom, maester->routes[i].name) == 0) {
             return 1;
         }
     }
+
+    // ...o si ja hi tenim una aliança (s'hi pot arribar encara que no estigui
+    // llistat a les rutes estàtiques: per hops o per la IP directa compartida).
+    int status = ALLIANCE_NONE;
+    if (getAllianceInfo(maester, trade->kingdom, NULL, NULL, &status, NULL)) {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -259,7 +268,7 @@ int handleSendCommand(Trade *trade, Maester *maester) {
             success = 1;
         }
 
-        if (routeIp) free(routeIp);
+        if (targetIp) free(targetIp);
     }
 
     free(fileName);
@@ -376,6 +385,16 @@ void startTrade(Trade *trade, Maester *maester) {
     // Verificar que el realm existeix
     if (!checkRealm(trade, maester)) {
         customWrite(1, RED "ERROR: The specified realm does not exist.\n" RESET);
+        return;
+    }
+
+    // Només es pot comerciar amb un regne amb el qual tenim una aliança ACTIVA
+    int allianceStatus = ALLIANCE_NONE;
+    if (!getAllianceInfo(maester, trade->kingdom, NULL, NULL, &allianceStatus, NULL) ||
+        allianceStatus != ALLIANCE_ACTIVE) {
+        asprintf(&msg, RED "ERROR: You must have an alliance with %s to trade.\n" RESET, trade->kingdom);
+        customWrite(1, msg);
+        free(msg);
         return;
     }
 

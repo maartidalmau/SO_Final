@@ -64,7 +64,6 @@ void envoyProcess(Envoy envoy) {
 
     close(envoy.p2c);
     close(envoy.c2p);
-    exit(0);
 }
 
 void createEnvoys(Maester *maester){
@@ -102,8 +101,14 @@ void createEnvoys(Maester *maester){
             Envoy envoy;
             envoy.p2c = maester->envoyPInfo.p2c[i][0];
             envoy.c2p = maester->envoyPInfo.c2p[i][1];
-    
+
             envoyProcess(envoy);
+
+            // En sortir, l'envoy allibera tota la memòria heretada del Maester
+            // (config, productes, rutes, arrays de pipes...) per no deixar fuites.
+            destroyEnvoys(maester);
+            destroyMaester(maester);
+            exit(0);
         } else if (maester->envoyPInfo.envoyPIDs[i] > 0) {
             close(maester->envoyPInfo.p2c[i][0]);
             close(maester->envoyPInfo.c2p[i][1]);

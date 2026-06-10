@@ -1,0 +1,13 @@
+KingsLanding
+../files/maesters/kingslanding
+3
+192.168.1.4
+8096
+--- ROUTES ---
+DEFAULT 192.168.1.5 8098
+Dragonstone 192.168.1.3 8095
+TheVale 192.168.1.4 8097
+Driftmark 192.168.1.5 8098
+Riverrun *.*.*.* 0
+
+

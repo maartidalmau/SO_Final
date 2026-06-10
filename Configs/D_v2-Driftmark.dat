@@ -1,0 +1,14 @@
+Driftmark
+../files/maesters/driftmark
+1
+192.168.1.5
+8098
+--- ROUTES ---
+Dragonstone *.*.*.* 0
+KingsLanding 192.168.1.4 8096
+TheVale *.*.*.* 0
+Riverrun 192.168.1.5 8099
+FakeRealm *.*.*.* 0
+
+
+

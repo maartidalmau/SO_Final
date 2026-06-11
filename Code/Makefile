@@ -1,10 +1,6 @@
 CFLAGS = -Wextra -Wall -MMD -MP -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
 LDFLAGS = -lpthread
 
-# Auto-generated header dependencies (.d files from -MMD).
-# Garanteix que en editar qualsevol .h es recompilin tots els .o afectats.
--include $(wildcard *.d)
-
 maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o
 	gcc maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o -o maester $(CFLAGS) $(LDFLAGS)
 

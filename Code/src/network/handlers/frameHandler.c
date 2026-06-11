@@ -524,26 +524,6 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     free(msg);
 }
 
-// ═══════════════════════════════════════════════════════════
-// HANDLERS DE ACK (Stubs por ahora)
-// ═══════════════════════════════════════════════════════════
-
-void handleAckFile(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)frame;
-    (void)fromSocket;
-    
-    customWrite(1, YELLOW "TODO: handleAckFile not yet implemented\n" RESET);
-}
-
-void handleAckMD5(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)frame;
-    (void)fromSocket;
-
-    customWrite(1, YELLOW "TODO: handleAckMD5 not yet implemented\n" RESET);
-}
-
 void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
     (void)maester;
     char *msg;

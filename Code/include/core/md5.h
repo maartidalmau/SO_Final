@@ -4,6 +4,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-char* md5_file(const char *filename);
+char* md5_buffer(const uint8_t *data, size_t len);
 
 #endif // MD5_H

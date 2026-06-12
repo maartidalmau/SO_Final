@@ -159,29 +159,15 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 5. Rebre el segell (0x02) i desar-lo a la carpeta de l'usuari.
-    // Tractem la ruta com a RELATIVA al working directory: "/a" -> "./a".
-    const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
-    while (*folder == '/') {
-        folder++;   // saltem les barres inicials: "/a" passa a "a"
+    // 5. Rebre el segell (0x02) en un buffer en MEMÒRIA (sense temp file)
+    uint8_t *sigBuf = NULL;
+    if (fileSize > 0) {
+        sigBuf = malloc((size_t)fileSize);
+        if (!sigBuf) {
+            sendNack(fromSocket, maester->name, "MEM_ERROR");
+            return;
+        }
     }
-    if (*folder == '\0') {
-        folder = ".";
-    }
-    mkdirRecursive(folder);  // crea tots els nivells de la ruta
-
-    char sigilPath[512];
-    snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
-
-    int fd = open(sigilPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        asprintf(&msg, RED "ERROR | Cannot create sigil file [%s]\n" RESET, sigilPath);
-        customWrite(1, msg);
-        free(msg);
-        sendNack(fromSocket, maester->name, "FILE_ERROR");
-        return;
-    }
-
     long received = 0;
     int recvErr = 0;
     while (received < fileSize) {
@@ -191,18 +177,16 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
             break;
         }
         uint16_t len = dataFrame.data_length;
-        if (len > 0 && write(fd, dataFrame.data, len) < 0) {
-            recvErr = 1;
-            break;
+        if (len > 0 && received + (long)len <= fileSize) {
+            memcpy(sigBuf + received, dataFrame.data, len);
         }
         received += len;
     }
-    close(fd);
 
-    // 6. Verificar md5 i respondre ACK MD5SUM (0x32)
+    // 6. Verificar md5 (en memòria) i respondre ACK MD5SUM (0x32)
     int md5ok = 0;
     if (!recvErr) {
-        char *actualMd5 = md5_file(sigilPath);
+        char *actualMd5 = md5_buffer(sigBuf, (size_t)fileSize);
         md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
         free(actualMd5);
     }
@@ -215,6 +199,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     sendFrame(fromSocket, &checkFrame);
 
     if (!md5ok) {
+        free(sigBuf);
         // Segell corromput: descartem la petició pendent
         addOrUpdateAlliance(maester, requesterName, NULL, 0, ALLIANCE_NONE);
         asprintf(&msg, RED "\n>>> Alliance request from %s discarded (sigil corrupted).\n" RESET, requesterName);
@@ -223,6 +208,32 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         customWrite(1, GREEN "$ " RESET);
         return;
     }
+
+    // Segell verificat: el desem a la carpeta de l'usuari (ruta relativa "/a"->"./a").
+    const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
+    while (*folder == '/') {
+        folder++;
+    }
+    if (*folder == '\0') {
+        folder = ".";
+    }
+    mkdirRecursive(folder);
+
+    char sigilPath[512];
+    snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
+    int fd = open(sigilPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        if (sigBuf && fileSize > 0) {
+            ssize_t w = write(fd, sigBuf, (size_t)fileSize);
+            (void)w;  // el segell ja s'ha verificat; desar-lo és best-effort
+        }
+        close(fd);
+    } else {
+        asprintf(&msg, YELLOW "Warning: cannot save sigil to [%s]\n" RESET, sigilPath);
+        customWrite(1, msg);
+        free(msg);
+    }
+    free(sigBuf);
 
     // 7. Segell OK: avisem l'usuari, que decidirà amb PLEDGE RESPOND
     asprintf(&msg, MAGENTA "\n>>> Alliance request received from %s (sigil verified).\n" RESET, requesterName);
@@ -350,19 +361,30 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 1. Serialitzem el nostre inventari a un fitxer temporal binari
-    char tmpPath[256];
-    snprintf(tmpPath, sizeof(tmpPath), "/tmp/products_send_%s_%d_%d.db",
-             maester->name, (int)getpid(), fromSocket);
-    if (updateStockDB(tmpPath, maester) < 0) {
-        sendNack(fromSocket, maester->name, "FILE_ERROR");
-        return;
+    // 1. Serialitzem el nostre inventari a un buffer en MEMÒRIA (sense temp file)
+    long fileSize = (long)maester->numProducts * (long)sizeof(AuxiliarProduct);
+    uint8_t *invBuf = NULL;
+    if (fileSize > 0) {
+        invBuf = malloc((size_t)fileSize);
+        if (!invBuf) {
+            sendNack(fromSocket, maester->name, "MEM_ERROR");
+            return;
+        }
+        pthread_mutex_lock(&maester->inventory_mutex);
+        for (int i = 0; i < maester->numProducts; i++) {
+            AuxiliarProduct aux;
+            memset(&aux, 0, sizeof(aux));
+            strncpy(aux.name, maester->inventory[i].name, sizeof(aux.name) - 1);
+            aux.amount = maester->inventory[i].amount;
+            aux.weight = maester->inventory[i].weight;
+            memcpy(invBuf + (size_t)i * sizeof(AuxiliarProduct), &aux, sizeof(AuxiliarProduct));
+        }
+        pthread_mutex_unlock(&maester->inventory_mutex);
     }
 
-    long fileSize = (long)maester->numProducts * (long)sizeof(AuxiliarProduct);
-    char *md5 = md5_file(tmpPath);
+    char *md5 = md5_buffer(invBuf, (size_t)fileSize);
     if (!md5) {
-        unlink(tmpPath);
+        free(invBuf);
         sendNack(fromSocket, maester->name, "MD5_ERROR");
         return;
     }
@@ -375,7 +397,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     Frame headerFrame;
     createFrame(&headerFrame, PRODUCT_LIST_HEADER, myIpPort, requesterName, headerData);
     if (sendFrame(fromSocket, &headerFrame) < 0) {
-        unlink(tmpPath);
+        free(invBuf);
         return;
     }
 
@@ -383,29 +405,25 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     Frame ackFrame;
     if (receiveFrame(fromSocket, &ackFrame) < 0 ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
-        unlink(tmpPath);
+        free(invBuf);
         return;
     }
 
-    // 4. Enviem el fitxer en blocs binaris (0x13)
-    int fd = open(tmpPath, O_RDONLY);
-    if (fd < 0) {
-        unlink(tmpPath);
-        return;
-    }
-    uint8_t chunk[DATA_MAX_SIZE];
-    ssize_t bytesRead;
+    // 4. Enviem el buffer en blocs binaris (0x13)
     Frame dataFrame;
-    while ((bytesRead = read(fd, chunk, DATA_MAX_SIZE)) > 0) {
-        createBinaryFrame(&dataFrame, PRODUCT_LIST_DATA, myIpPort, requesterName, chunk, (uint16_t)bytesRead);
+    long sent = 0;
+    while (sent < fileSize) {
+        long remaining = fileSize - sent;
+        uint16_t chunkLen = (remaining > DATA_MAX_SIZE) ? DATA_MAX_SIZE : (uint16_t)remaining;
+        createBinaryFrame(&dataFrame, PRODUCT_LIST_DATA, myIpPort, requesterName,
+                          invBuf + sent, chunkLen);
         if (sendFrame(fromSocket, &dataFrame) < 0) {
-            close(fd);
-            unlink(tmpPath);
+            free(invBuf);
             return;
         }
+        sent += chunkLen;
     }
-    close(fd);
-    unlink(tmpPath);
+    free(invBuf);
 
     // 5. Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
     Frame checkFrame;
@@ -512,27 +530,24 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     customWrite(1, msg);
     free(msg);
 
-    char tradeFilePath[256];
-    snprintf(tradeFilePath, sizeof(tradeFilePath), "/tmp/trade_%s_%d_%d.tmp",
-             requesterName, (int)getpid(), fromSocket);
-    int fd = open(tradeFilePath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        sendNack(fromSocket, maester->name, "FILE_ERROR");
-        return;
-    }
-
     // 3. ACK FITXER (0x31)
     char ackData[DATA_MAX_SIZE];
     snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
     Frame ackFrame;
     createFrame(&ackFrame, ACK_FILE, "", "", ackData);
     if (sendFrame(fromSocket, &ackFrame) < 0) {
-        close(fd);
-        unlink(tradeFilePath);
         return;
     }
 
-    // 4. Rebre DADES (0x15) fins completar fileSize
+    // 4. Rebre DADES (0x15) en un buffer en MEMÒRIA (sense temp file)
+    char *content = NULL;
+    if (fileSize > 0) {
+        content = malloc((size_t)fileSize + 1);
+        if (!content) {
+            sendNack(fromSocket, maester->name, "MEM_ERROR");
+            return;
+        }
+    }
     long received = 0;
     int recvErr = 0;
     while (received < fileSize) {
@@ -542,18 +557,19 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
             break;
         }
         uint16_t len = dataFrame.data_length;
-        if (len > 0 && write(fd, dataFrame.data, len) < 0) {
-            recvErr = 1;
-            break;
+        if (len > 0 && received + (long)len <= fileSize) {
+            memcpy(content + received, dataFrame.data, len);
         }
         received += len;
     }
-    close(fd);
+    if (content) {
+        content[fileSize] = '\0';
+    }
 
-    // 5. Verificar md5 i enviar ACK MD5SUM (0x32)
+    // 5. Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
     int md5ok = 0;
     if (!recvErr) {
-        char *actualMd5 = md5_file(tradeFilePath);
+        char *actualMd5 = md5_buffer((const uint8_t *)content, (size_t)fileSize);
         md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
         free(actualMd5);
     }
@@ -563,7 +579,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     createFrame(&checkFrame, ACK_MD5SUM, "", "", checkData);
     sendFrame(fromSocket, &checkFrame);
 
-    // 6. Processar la comanda i preparar RESPOSTA (0x16)
+    // 6. Processar la comanda (parsejant el buffer) i preparar RESPOSTA (0x16)
     char orderResponseData[DATA_MAX_SIZE];
     int response_ok = 1;
 
@@ -571,66 +587,33 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
         snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&CORRUPTED");
         response_ok = 0;
     } else {
-        int fd_trade = open(tradeFilePath, O_RDONLY);
-        if (fd_trade < 0) {
-            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&Cannot read order");
-            response_ok = 0;
-        } else {
-            char *content = NULL;
-            size_t totalContent = 0;
-            char buf[512];
-            ssize_t rd;
-            int readErr = 0;
-
-            while ((rd = read(fd_trade, buf, sizeof(buf))) > 0) {
-                char *tmp = realloc(content, totalContent + (size_t)rd + 1);
-                if (!tmp) { readErr = 1; break; }
-                content = tmp;
-                memcpy(content + totalContent, buf, (size_t)rd);
-                totalContent += (size_t)rd;
-            }
-            close(fd_trade);
-
-            if (readErr || rd < 0) {
-                free(content);
-                snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&Cannot read order");
-                response_ok = 0;
-            } else {
-                if (content) {
-                    content[totalContent] = '\0';
-                }
-                char *saveptr = NULL;
-                char *lineTok = content ? strtok_r(content, "\n", &saveptr) : NULL;
-                while (lineTok) {
-                    int qty = 0;
-                    char product[128];
-                    // El producte pot tenir espais: capturem fins al final de línia
-                    if (sscanf(lineTok, "%d x %127[^\n]", &qty, product) == 2) {
-                        if (decrementInventory(maester, product, qty) < 0) {
-                            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&OUT_OF_STOCK");
-                            response_ok = 0;
-                            break;
-                        }
-                    }
-                    lineTok = strtok_r(NULL, "\n", &saveptr);
-                }
-                free(content);
-
-                if (response_ok) {
-                    // Persistim l'inventari al fitxer d'stock real
-                    updateStockDB(maester->stockFile, maester);
-                    snprintf(orderResponseData, DATA_MAX_SIZE, "OK");
+        char *saveptr = NULL;
+        char *lineTok = content ? strtok_r(content, "\n", &saveptr) : NULL;
+        while (lineTok) {
+            int qty = 0;
+            char product[128];
+            // El producte pot tenir espais: capturem fins al final de línia
+            if (sscanf(lineTok, "%d x %127[^\n]", &qty, product) == 2) {
+                if (decrementInventory(maester, product, qty) < 0) {
+                    snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&OUT_OF_STOCK");
+                    response_ok = 0;
+                    break;
                 }
             }
+            lineTok = strtok_r(NULL, "\n", &saveptr);
+        }
+        if (response_ok) {
+            // Persistim l'inventari al fitxer d'stock real
+            updateStockDB(maester->stockFile, maester);
+            snprintf(orderResponseData, DATA_MAX_SIZE, "OK");
         }
     }
+    free(content);
 
     // 7. RESPOSTA A COMANDA (0x16)
     Frame responseFrame;
     createFrame(&responseFrame, ORDER_RESPONSE, "", "", orderResponseData);
     sendFrame(fromSocket, &responseFrame);
-
-    unlink(tradeFilePath);
 
     if (response_ok) {
         asprintf(&msg, GREEN ">>> Order from [%s] processed. Stock updated.\n" RESET, requesterName);

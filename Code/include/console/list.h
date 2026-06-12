@@ -13,6 +13,6 @@
 
 void listRealms(Maester *maester);
 void listInventory(Maester *maester);
-void listRemoteInventory(const char *realmName, const char *filePath);
+void listRemoteInventoryBuf(const char *realmName, const uint8_t *buf, size_t len);
 
 #endif

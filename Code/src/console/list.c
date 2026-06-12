@@ -51,15 +51,9 @@ void listInventory(Maester *maester) {
     free(msg);
 }
 
-// Mostra l'inventari d'un regne aliat (rebut com a fitxer binari d'AuxiliarProduct)
-// amb el MATEIX format que l'inventari propi, però titulat amb el nom del regne.
-void listRemoteInventory(const char *realmName, const char *filePath) {
-    int fd = open(filePath, O_RDONLY);
-    if (fd < 0) {
-        customWrite(1, RED "No products available from this realm.\n" RESET);
-        return;
-    }
-
+// Mostra l'inventari d'un regne aliat (rebut en un buffer en MEMÒRIA de registres
+// AuxiliarProduct) amb el MATEIX format que l'inventari propi, titulat amb el regne.
+void listRemoteInventoryBuf(const char *realmName, const uint8_t *buf, size_t len) {
     char *msg;
     asprintf(&msg, MAGENTA "--- Trade Ledger of %s ---\n" RESET, realmName);
     customWrite(1, msg);
@@ -67,20 +61,19 @@ void listRemoteInventory(const char *realmName, const char *filePath) {
     customWrite(1, YELLOW "Item                           | Value (Gold) | Weight (Stone)\n" RESET);
     customWrite(1, YELLOW "------------------------------------------------------------------\n" RESET);
 
-    AuxiliarProduct aux;
-    int count = 0;
-    while (read(fd, &aux, sizeof(AuxiliarProduct)) == (ssize_t)sizeof(AuxiliarProduct)) {
+    long count = (buf && len) ? (long)(len / sizeof(AuxiliarProduct)) : 0;
+    for (long i = 0; i < count; i++) {
+        AuxiliarProduct aux;
+        memcpy(&aux, buf + (size_t)i * sizeof(AuxiliarProduct), sizeof(AuxiliarProduct));
         aux.name[sizeof(aux.name) - 1] = '\0';
         asprintf(&msg, "%s%-30s | %-12d | %-12.1f%s\n",
                  CYAN, aux.name, aux.amount, aux.weight, RESET);
         customWrite(1, msg);
         free(msg);
-        count++;
     }
-    close(fd);
 
     customWrite(1, YELLOW "------------------------------------------------------------------\n" RESET);
-    asprintf(&msg, "%sTotal Entries: %d%s\n", GREEN, count, RESET);
+    asprintf(&msg, "%sTotal Entries: %ld%s\n", GREEN, count, RESET);
     customWrite(1, msg);
     free(msg);
 }

@@ -63,6 +63,7 @@ typedef struct {
 typedef struct {
     char *realm;
     char **products;
+    float *weights;     // pes per unitat de cada producte (paral·lel a products)
     int numProducts;
 } RemoteCatalog;
 
@@ -141,11 +142,11 @@ RemoteCatalog *findRemoteCatalog(Maester *maester, const char *realmName);
 
 int updateRemoteCatalog(Maester *maester, const char *realmName, const char *serializedProducts);
 
-int cacheRemoteCatalogFromFile(Maester *maester, const char *realmName, const char *filePath);
+float remoteCatalogWeight(Maester *maester, const char *realmName, const char *productName);
 
 int decrementInventory(Maester *maester, const char *productName, int quantity);
 
-int incrementInventory(Maester *maester, const char *productName, int quantity);
+int incrementInventory(Maester *maester, const char *productName, int quantity, float weight);
 
 int updateStockDB(const char *filename, Maester *maester);
 

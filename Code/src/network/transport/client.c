@@ -28,7 +28,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     char origin[IPC_IP_SIZE + 16];
     snprintf(origin, sizeof(origin), "%s:%u", request->source_ip, request->source_port);
 
-    // Obrim el segell i en calculem mida (sense stat) i md5 (md5sum)
+    // Llegim el segell SENCER a memòria (sense temp file) i en calculem mida i md5
     int fd_sigil = open(request->path, O_RDONLY);
     if (fd_sigil < 0) {
         close(fd_nextHop);
@@ -42,9 +42,33 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
         fillBasicError(response, "Cannot determine sigil size");
         return -1;
     }
-    char *md5 = md5_file(request->path);
+    uint8_t *sigBuf = NULL;
+    if (sigilSize > 0) {
+        sigBuf = malloc((size_t)sigilSize);
+        if (!sigBuf) {
+            close(fd_sigil);
+            close(fd_nextHop);
+            fillBasicError(response, "Cannot allocate sigil buffer");
+            return -1;
+        }
+        long off = 0;
+        ssize_t r;
+        while (off < sigilSize && (r = read(fd_sigil, sigBuf + off, (size_t)(sigilSize - off))) > 0) {
+            off += r;
+        }
+        if (off != sigilSize) {
+            free(sigBuf);
+            close(fd_sigil);
+            close(fd_nextHop);
+            fillBasicError(response, "Cannot read sigil file");
+            return -1;
+        }
+    }
+    close(fd_sigil);
+
+    char *md5 = md5_buffer(sigBuf, (size_t)sigilSize);
     if (!md5) {
-        close(fd_sigil);
+        free(sigBuf);
         close(fd_nextHop);
         fillBasicError(response, "Cannot compute sigil md5");
         return -1;
@@ -63,7 +87,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     Frame requestFrame;
     createFrame(&requestFrame, ALLIANCE_REQUEST, origin, request->target_realm, frameData);
     if (sendFrame(fd_nextHop, &requestFrame) < 0) {
-        close(fd_sigil);
+        free(sigBuf);
         close(fd_nextHop);
         fillBasicError(response, "Failed to send alliance request");
         return -1;
@@ -73,27 +97,29 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     Frame ackFrame;
     if (receiveFrame(fd_nextHop, &ackFrame) < 0 ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
-        close(fd_sigil);
+        free(sigBuf);
         close(fd_nextHop);
         fillBasicError(response, "Sigil not acknowledged");
         return -1;
     }
 
-    // 3. Enviem el segell en blocs binaris (0x02)
-    uint8_t chunk[DATA_MAX_SIZE];
-    ssize_t bytesRead;
+    // 3. Enviem el segell en blocs binaris (0x02) des del buffer en memòria
     Frame dataFrame;
-    while ((bytesRead = read(fd_sigil, chunk, DATA_MAX_SIZE)) > 0) {
+    long sent = 0;
+    while (sent < sigilSize) {
+        long remaining = sigilSize - sent;
+        uint16_t chunkLen = (remaining > DATA_MAX_SIZE) ? DATA_MAX_SIZE : (uint16_t)remaining;
         createBinaryFrame(&dataFrame, SIGIL_SEND, origin, request->target_realm,
-                          chunk, (uint16_t)bytesRead);
+                          sigBuf + sent, chunkLen);
         if (sendFrame(fd_nextHop, &dataFrame) < 0) {
-            close(fd_sigil);
+            free(sigBuf);
             close(fd_nextHop);
             fillBasicError(response, "Failed to send sigil data");
             return -1;
         }
+        sent += chunkLen;
     }
-    close(fd_sigil);
+    free(sigBuf);
 
     // 4. Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
     Frame checkFrame;
@@ -204,41 +230,35 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
         return -1;
     }
 
-    // 4. Rebre les DADES (0x13) i escriure-les a un fitxer temporal
-    char recvPath[256];
-    snprintf(recvPath, sizeof(recvPath), "/tmp/products_recv_%s_%d_%d.db",
-             request->target_realm, (int)getpid(), fd_dest);
-    int fd_file = open(recvPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd_file < 0) {
-        close(fd_dest);
-        fillBasicError(response, "Cannot create temp product file");
-        return -1;
+    // 4. Rebre les DADES (0x13) en un buffer en MEMÒRIA (sense temp file)
+    uint8_t *recvBuf = NULL;
+    if (fileSize > 0) {
+        recvBuf = malloc((size_t)fileSize);
+        if (!recvBuf) {
+            close(fd_dest);
+            fillBasicError(response, "Cannot allocate product buffer");
+            return -1;
+        }
     }
 
     long received = 0;
     while (received < fileSize) {
         Frame dataFrame;
         if (receiveFrame(fd_dest, &dataFrame) < 0 || dataFrame.type != PRODUCT_LIST_DATA) {
-            close(fd_file);
+            free(recvBuf);
             close(fd_dest);
-            unlink(recvPath);
             fillBasicError(response, "Failed receiving product list data");
             return -1;
         }
         uint16_t len = dataFrame.data_length;
-        if (len > 0 && write(fd_file, dataFrame.data, len) < 0) {
-            close(fd_file);
-            close(fd_dest);
-            unlink(recvPath);
-            fillBasicError(response, "Failed writing product list data");
-            return -1;
+        if (len > 0 && received + (long)len <= fileSize) {
+            memcpy(recvBuf + received, dataFrame.data, len);
         }
         received += len;
     }
-    close(fd_file);
 
-    // 5. Verificar md5 i enviar ACK MD5SUM (0x32)
-    char *actualMd5 = md5_file(recvPath);
+    // 5. Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
+    char *actualMd5 = md5_buffer(recvBuf, (size_t)fileSize);
     int md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
     free(actualMd5);
 
@@ -251,17 +271,39 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
     close(fd_dest);
 
     if (!md5ok) {
-        unlink(recvPath);
+        free(recvBuf);
         fillBasicError(response, "Product list md5 mismatch");
         return -1;
     }
 
-    // Èxit: retornem la ruta del fitxer rebut perquè el Maester el mostri/parsegi
+    // Èxit: l'envoy mostra la taula (comparteix stdout amb el Maester) i torna
+    // "name,weight|name,weight|..." al payload perquè el Maester cachegi nom i pes
+    // per unitat (cal per actualitzar l'inventari del comprador a START TRADE).
+    listRemoteInventoryBuf(request->target_realm, recvBuf, (size_t)fileSize);
+
+    response->payload[0] = '\0';
+    size_t off = 0;
+    long nRecords = fileSize / (long)sizeof(AuxiliarProduct);
+    for (long i = 0; i < nRecords; i++) {
+        AuxiliarProduct aux;
+        memcpy(&aux, recvBuf + (size_t)i * sizeof(AuxiliarProduct), sizeof(AuxiliarProduct));
+        aux.name[sizeof(aux.name) - 1] = '\0';
+        char entry[160];
+        int el = snprintf(entry, sizeof(entry), "%s%s,%.2f",
+                          (off > 0) ? "|" : "", aux.name, aux.weight);
+        if (el < 0 || off + (size_t)el >= IPC_PAYLOAD_SIZE) {
+            break;  // no cap més al payload
+        }
+        memcpy(response->payload + off, entry, (size_t)el);
+        off += (size_t)el;
+        response->payload[off] = '\0';
+    }
+    free(recvBuf);
+
     response->status = IPC_STATUS_OK;
     response->frame_type = PRODUCT_LIST_HEADER;
     response->result_code = 0;
     strncpy(response->realm, request->target_realm, IPC_REALM_SIZE - 1);
-    strncpy(response->payload, recvPath, IPC_PAYLOAD_SIZE - 1);
     return 0;
 }
 
@@ -379,12 +421,37 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
+    // Llegim la comanda SENCERA a memòria (md5 sense temp file)
+    uint8_t *tradeBuf = NULL;
+    if (fileSize > 0) {
+        tradeBuf = malloc((size_t)fileSize);
+        if (!tradeBuf) {
+            close(fd_trade);
+            close(fd_dest);
+            fillBasicError(response, "Cannot allocate trade buffer");
+            return -1;
+        }
+        long roff = 0;
+        ssize_t r;
+        while (roff < fileSize && (r = read(fd_trade, tradeBuf + roff, (size_t)(fileSize - roff))) > 0) {
+            roff += r;
+        }
+        if (roff != fileSize) {
+            free(tradeBuf);
+            close(fd_trade);
+            close(fd_dest);
+            fillBasicError(response, "Cannot read trade file");
+            return -1;
+        }
+    }
+    close(fd_trade);
+
     char origin[IPC_IP_SIZE + 16];
     snprintf(origin, sizeof(origin), "%s:%u", request->source_ip, request->source_port);
 
-    char *md5 = md5_file(request->path);
+    char *md5 = md5_buffer(tradeBuf, (size_t)fileSize);
     if (!md5) {
-        close(fd_trade);
+        free(tradeBuf);
         close(fd_dest);
         fillBasicError(response, "Cannot compute order md5");
         return -1;
@@ -398,7 +465,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     Frame headerFrame;
     createFrame(&headerFrame, ORDER_REQUEST_HEADER, origin, request->target_realm, headerData);
     if (sendFrame(fd_dest, &headerFrame) < 0) {
-        close(fd_trade);
+        free(tradeBuf);
         close(fd_dest);
         fillBasicError(response, "Failed to send trade header");
         return -1;
@@ -408,27 +475,29 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     Frame ackFrame;
     if (receiveFrame(fd_dest, &ackFrame) < 0 ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
-        close(fd_trade);
+        free(tradeBuf);
         close(fd_dest);
         fillBasicError(response, "Order not acknowledged");
         return -1;
     }
 
-    // 3. Enviem la comanda en blocs (0x15)
-    uint8_t chunk[DATA_MAX_SIZE];
-    ssize_t bytesRead;
+    // 3. Enviem la comanda en blocs (0x15) des del buffer en memòria
     Frame dataFrame;
-    while ((bytesRead = read(fd_trade, chunk, DATA_MAX_SIZE)) > 0) {
+    long sent = 0;
+    while (sent < fileSize) {
+        long remaining = fileSize - sent;
+        uint16_t chunkLen = (remaining > DATA_MAX_SIZE) ? DATA_MAX_SIZE : (uint16_t)remaining;
         createBinaryFrame(&dataFrame, ORDER_REQUEST_DATA, origin, request->target_realm,
-                          chunk, (uint16_t)bytesRead);
+                          tradeBuf + sent, chunkLen);
         if (sendFrame(fd_dest, &dataFrame) < 0) {
-            close(fd_trade);
+            free(tradeBuf);
             close(fd_dest);
             fillBasicError(response, "Failed to send trade chunk");
             return -1;
         }
+        sent += chunkLen;
     }
-    close(fd_trade);
+    free(tradeBuf);
 
     // 4. Rebem ACK MD5SUM (0x32)
     Frame checkFrame;
@@ -604,12 +673,9 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
 
     if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) == 0 &&
         response.status == IPC_STATUS_OK) {
-        // response.payload conté la ruta del fitxer temporal amb l'inventari rebut.
-        // El mostrem amb el mateix format que els productes propis i cachegem els
-        // noms per a poder validar-los a START TRADE.
-        listRemoteInventory(realmName, response.payload);
-        cacheRemoteCatalogFromFile(maester, realmName, response.payload);
-        unlink(response.payload);
+        // L'envoy ja ha mostrat la taula. response.payload porta els noms dels
+        // productes ("name1|name2|...") per cachejar-los i validar-los a START TRADE.
+        updateRemoteCatalog(maester, realmName, response.payload);
         releaseEnvoy(maester, envoyIndex);
         return 0;
     } else if (response.frame_type == ERR_UNAUTHORIZED) {

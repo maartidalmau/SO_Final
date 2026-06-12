@@ -251,9 +251,11 @@ int handleSendCommand(Trade *trade, Maester *maester) {
             success = 1;
 
             // Comanda acceptada: rebem els béns -> actualitzem el NOSTRE inventari
-            // (l'aliat ja ha decrementat el seu) i el persistim a stock.db.
+            // (l'aliat ja ha decrementat el seu) i el persistim a stock.db. El pes
+            // per unitat el traiem del catàleg remot (obtingut amb LIST PRODUCTS).
             for (int i = 0; i < trade->numProducts; i++) {
-                incrementInventory(maester, trade->products[i].name, trade->products[i].amount);
+                float w = remoteCatalogWeight(maester, trade->kingdom, trade->products[i].name);
+                incrementInventory(maester, trade->products[i].name, trade->products[i].amount, w);
             }
             updateStockDB(maester->stockFile, maester);
 

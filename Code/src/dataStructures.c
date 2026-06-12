@@ -43,6 +43,7 @@ static void freeRemoteCatalog(RemoteCatalog *catalog) {
         free(catalog->products);
         catalog->products = NULL;
     }
+    safeFree((void **)&catalog->weights);
     catalog->numProducts = 0;
 }
 
@@ -332,6 +333,7 @@ int updateRemoteCatalog(Maester *maester, const char *realmName, const char *ser
         catalog = &maester->remoteCatalogs[maester->numRemoteCatalogs];
         catalog->realm = strdup(realmName);
         catalog->products = NULL;
+        catalog->weights = NULL;
         catalog->numProducts = 0;
         maester->numRemoteCatalogs++;
     } else {
@@ -339,6 +341,7 @@ int updateRemoteCatalog(Maester *maester, const char *realmName, const char *ser
         catalog->realm = strdup(realmName);
     }
 
+    // Cada token té el format "name,weight"; separem el nom del pes (per unitat).
     char *copy = strdup(serializedProducts);
     char *cursor = copy;
     char *token = NULL;
@@ -347,17 +350,33 @@ int updateRemoteCatalog(Maester *maester, const char *realmName, const char *ser
         if (*token == '\0') {
             continue;
         }
+        float weight = 0.0f;
+        char *comma = strrchr(token, ',');
+        if (comma) {
+            *comma = '\0';
+            weight = (float)atof(comma + 1);
+        }
+
         char **products = realloc(catalog->products, sizeof(char *) * (catalog->numProducts + 1));
         if (!products) {
             free(copy);
             return -1;
         }
         catalog->products = products;
+
+        float *weights = realloc(catalog->weights, sizeof(float) * (catalog->numProducts + 1));
+        if (!weights) {
+            free(copy);
+            return -1;
+        }
+        catalog->weights = weights;
+
         catalog->products[catalog->numProducts] = strdup(token);
         if (!catalog->products[catalog->numProducts]) {
             free(copy);
             return -1;
         }
+        catalog->weights[catalog->numProducts] = weight;
         catalog->numProducts++;
     }
 
@@ -365,44 +384,21 @@ int updateRemoteCatalog(Maester *maester, const char *realmName, const char *ser
     return 0;
 }
 
-// Llegeix un fitxer binari d'inventari (AuxiliarProduct) rebut d'un aliat i
-// actualitza el catàleg remot (només noms) per a poder validar-los a START TRADE.
-int cacheRemoteCatalogFromFile(Maester *maester, const char *realmName, const char *filePath) {
-    if (!maester || !realmName || !filePath) {
-        return -1;
+// Retorna el pes per unitat d'un producte del catàleg remot (0 si no hi és).
+float remoteCatalogWeight(Maester *maester, const char *realmName, const char *productName) {
+    if (!maester || !realmName || !productName) {
+        return 0.0f;
     }
-
-    int fd = open(filePath, O_RDONLY);
-    if (fd < 0) {
-        return -1;
+    RemoteCatalog *catalog = findRemoteCatalog(maester, realmName);
+    if (!catalog || !catalog->weights) {
+        return 0.0f;
     }
-
-    char *serialized = NULL;
-    size_t total = 0;
-    AuxiliarProduct aux;
-
-    while (read(fd, &aux, sizeof(AuxiliarProduct)) == (ssize_t)sizeof(AuxiliarProduct)) {
-        aux.name[sizeof(aux.name) - 1] = '\0';
-        size_t nameLen = strlen(aux.name);
-        char *tmp = realloc(serialized, total + nameLen + 2);  // nom + '|' + '\0'
-        if (!tmp) {
-            free(serialized);
-            close(fd);
-            return -1;
+    for (int i = 0; i < catalog->numProducts; i++) {
+        if (strcasecmp(catalog->products[i], productName) == 0) {
+            return catalog->weights[i];
         }
-        serialized = tmp;
-        if (total > 0) {
-            serialized[total++] = '|';
-        }
-        memcpy(serialized + total, aux.name, nameLen);
-        total += nameLen;
-        serialized[total] = '\0';
     }
-    close(fd);
-
-    int rc = updateRemoteCatalog(maester, realmName, serialized ? serialized : "");
-    free(serialized);
-    return rc;
+    return 0.0f;
 }
 
 void endAndCleanEnvoys(Maester *maester) {
@@ -450,7 +446,7 @@ int decrementInventory(Maester *maester, const char *productName, int quantity) 
     return -1;
 }
 
-int incrementInventory(Maester *maester, const char *productName, int quantity) {
+int incrementInventory(Maester *maester, const char *productName, int quantity, float weight) {
     if (!maester || !productName || quantity <= 0) {
         return -1;
     }
@@ -466,7 +462,7 @@ int incrementInventory(Maester *maester, const char *productName, int quantity) 
         }
     }
 
-    // Si no el teníem, l'afegim com a producte nou (pes desconegut -> 0)
+    // Si no el teníem, l'afegim com a producte nou amb el pes per unitat rebut
     Product *tmp = realloc(maester->inventory, (maester->numProducts + 1) * sizeof(Product));
     if (!tmp) {
         pthread_mutex_unlock(&maester->inventory_mutex);
@@ -479,7 +475,7 @@ int incrementInventory(Maester *maester, const char *productName, int quantity) 
         return -1;
     }
     maester->inventory[maester->numProducts].amount = quantity;
-    maester->inventory[maester->numProducts].weight = 0.0f;
+    maester->inventory[maester->numProducts].weight = weight;
     maester->numProducts++;
 
     pthread_mutex_unlock(&maester->inventory_mutex);

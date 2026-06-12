@@ -2,32 +2,11 @@
 
 pthread_mutex_t stdoutMutex = PTHREAD_MUTEX_INITIALIZER;
 
-void* safeMalloc(int size) {
-    void* ptr = malloc(size);
-    if (ptr == NULL) {
-        //Print ERROR
-        return NULL;
-    }
-    return ptr;
-}
-
 void safeFree(void** ptr) {
     if (ptr != NULL && *ptr != NULL) {
         free(*ptr);
         *ptr = NULL;
     }
-}
-
-int isAllocated(void* ptr) {
-    return ptr != NULL;
-}
-
-void lockStdout() {
-    pthread_mutex_lock(&stdoutMutex);
-}
-
-void unlockStdout() {
-    pthread_mutex_unlock(&stdoutMutex);
 }
 
 void customWrite(int fdesc, char* string) {
@@ -92,7 +71,6 @@ int customRead(int fdesc, char **string, char delim) {
     return 1;
 }
 
-
 void removeChar(char *str, char c) {
     if (str == NULL) {
         return;
@@ -106,41 +84,6 @@ void removeChar(char *str, char c) {
         i++;
     }
     str[j] = '\0';
-}
-
-
-char* intToStr(int num) {
-    char* str = malloc(12);
-
-    if (!str) {
-        return NULL;
-    }
-
-    int i = 0;
-    if (num == 0) {
-        str[i++] = '0';
-    } else {
-        if (num < 0) {
-            str[i++] = '-';
-            num = -num;
-        }
-
-        int start = i;
-
-        while (num > 0) {
-            str[i++] = (num % 10) + '0';
-            num /= 10;
-        }
-
-        for (int j = 0; j < (i - start) / 2; j++) {
-            char temp = str[start + j];
-            str[start + j] = str[i - 1 - j];
-            str[i - 1 - j] = temp;
-        }
-    }
-
-    str[i] = '\0';
-    return str;
 }
 
 int parseCommand(char *command, char *tokens[]) {

@@ -25,20 +25,11 @@ void handlePingPong(Maester *maester, Frame *frame, int fromSocket);
 
 void handleDisconnect(Maester *maester, Frame *frame);
 
-
-void handleNack(Maester *maester, Frame *frame, int fromSocket);
-
 void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket);
-
-void handleSigilSend(Maester *maester, Frame *frame, int fromSocket);
 
 void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket);
 
 void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket);
-
-void handleAckFile(Maester *maester, Frame *frame, int fromSocket);
-
-void handleAckMD5(Maester *maester, Frame *frame, int fromSocket);
 
 void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket);
 

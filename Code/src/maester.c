@@ -137,7 +137,6 @@ int main(int argc, char *argv[]) {
         pthread_join(timeoutThreadID, NULL);
     }
     endAndCleanEnvoys(maester);
-    cerrarWorkers(maester);
 
     asprintf(&msg, GREEN "The Maester of %s signs off. The ravens rest.\n" RESET, maester->name);
     customWrite(1, msg);

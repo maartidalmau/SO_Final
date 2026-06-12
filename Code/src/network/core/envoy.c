@@ -24,9 +24,6 @@ static IpcResponse executeEnvoyRequest(const IpcRequest *request) {
         case IPC_LIST_PRODUCTS_REMOTE:
             envoySendProductListRequest(request, &response);
             break;
-        case IPC_SEND_SIGIL:
-            envoySendSigilFile(request, &response);
-            break;
         case IPC_SEND_TRADE_FILE:
             envoySendTradeFile(request, &response);
             break;

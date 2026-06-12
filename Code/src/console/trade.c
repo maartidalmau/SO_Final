@@ -8,19 +8,6 @@ static RemoteCatalog *getTradeCatalog(Trade *trade, Maester *maester) {
     return findRemoteCatalog(maester, trade->kingdom);
 }
 
-int isProductInInventory(char *productName, Maester *maester) {
-    if (!productName || !maester) {
-        return 0;
-    }
-
-    for (int i = 0; i < maester->numProducts; i++) {
-        if (strcasecmp(maester->inventory[i].name, productName) == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 static int isProductInRemoteCatalog(char *productName, RemoteCatalog *catalog) {
     if (!productName || !catalog) {
         return 0;
@@ -341,26 +328,6 @@ char* buildProductName(char *tokens[], int count) {
     }
 
     return productName;
-}
-
-void displayAvailableProducts(Maester *maester) {
-    if (!maester || maester->numProducts == 0) {
-        customWrite(1, YELLOW "No products available.\n" RESET);
-        return;
-    }
-
-    customWrite(1, YELLOW "Available products: " RESET);
-    for (int i = 0; i < maester->numProducts; i++) {
-        char *msg;
-        asprintf(&msg, "%s%s%s", CYAN, maester->inventory[i].name, RESET);
-        customWrite(1, msg);
-        free(msg);
-
-        if (i < maester->numProducts - 1) {
-            customWrite(1, YELLOW ", " RESET);
-        }
-    }
-    customWrite(1, ".\n");
 }
 
 static void displayTradeCatalog(Trade *trade, Maester *maester) {

@@ -11,13 +11,7 @@ int hasAlliance(Maester *maester, const char *realmName);
 
 void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int port, int status);
 
-Alliance* findAlliance(Maester *maester, const char *realmName);
-
 int getAllianceInfo(Maester *maester, const char *realmName, char **ipOut, int *portOut, int *statusOut, time_t *requestTimeOut);
-
-void setAllianceSigil(Maester *maester, const char *realmName, const char *sigilPath);
-
-char* getAllianceSigil(Maester *maester, const char *realmName);
 
 void sweepPledgeTimeouts(Maester *maester);
 

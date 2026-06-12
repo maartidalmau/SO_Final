@@ -29,8 +29,6 @@ int envoySendAllianceResponse(const IpcRequest *request, IpcResponse *response);
 
 int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response);
 
-int envoySendSigilFile(const IpcRequest *request, IpcResponse *response);
-
 int envoySendTradeFile(const IpcRequest *request, IpcResponse *response);
 
 int sendPing(Maester *maester, const char *realmName);

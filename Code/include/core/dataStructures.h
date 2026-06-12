@@ -46,7 +46,6 @@ typedef struct {
     int port;
     int status;
     time_t requestTime;
-    char *sigilPath;
 } Alliance;
 
 typedef struct {

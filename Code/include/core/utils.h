@@ -20,19 +20,11 @@
 #define MAX_TOKENS 15 // Augmentat per noms de productes amb espais
 
 
-void* safeMalloc(int size);
-
 void safeFree(void** ptr);
-
-int isAllocated(void* ptr);
 
 void customWrite(int fdesc, char* string);
 
-void concatAndPrint(int fdesc, char* strings[], int n);
-
 int customRead(int fdesc, char** string, char delim);
-
-char* intToStr(int num);
 
 int parseCommand(char *command, char *tokens[]);
 

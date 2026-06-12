@@ -21,27 +21,6 @@ int hasAlliance(Maester *maester, const char *realmName) {
     return 0;
 }
 
-Alliance* findAlliance(Maester *maester, const char *realmName) {
-    if (!maester || !realmName) {
-        return NULL;
-    }
-    
-    Alliance *result = NULL;
-    
-    pthread_mutex_lock(&maester->alliances_mutex);
-    
-    for (int i = 0; i < maester->numAlliances; i++) {
-        if (strcasecmp(maester->alliances[i].name, realmName) == 0) {
-            result = &maester->alliances[i];
-            break;
-        }
-    }
-    
-    pthread_mutex_unlock(&maester->alliances_mutex);
-    
-    return result;
-}
-
 void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int port, int status) {
     if (!maester || !name) {
         return;
@@ -90,7 +69,6 @@ void addOrUpdateAlliance(Maester *maester, const char *name, const char *ip, int
     maester->alliances[maester->numAlliances].port = port;
     maester->alliances[maester->numAlliances].status = status;
     maester->alliances[maester->numAlliances].requestTime = time(NULL);
-    maester->alliances[maester->numAlliances].sigilPath = NULL;
 
     maester->numAlliances++;
     
@@ -124,46 +102,6 @@ int getAllianceInfo(Maester *maester, const char *realmName, char **ipOut, int *
     return found;
 }
 
-void setAllianceSigil(Maester *maester, const char *realmName, const char *sigilPath) {
-    if (!maester || !realmName || !sigilPath) {
-        return;
-    }
-
-    pthread_mutex_lock(&maester->alliances_mutex);
-
-    for (int i = 0; i < maester->numAlliances; i++) {
-        if (strcasecmp(maester->alliances[i].name, realmName) == 0) {
-            if (maester->alliances[i].sigilPath) {
-                free(maester->alliances[i].sigilPath);
-            }
-            maester->alliances[i].sigilPath = strdup(sigilPath);
-            break;
-        }
-    }
-
-    pthread_mutex_unlock(&maester->alliances_mutex);
-}
-
-char* getAllianceSigil(Maester *maester, const char *realmName) {
-    if (!maester || !realmName) {
-        return NULL;
-    }
-
-    char *sigilPath = NULL;
-
-    pthread_mutex_lock(&maester->alliances_mutex);
-
-    for (int i = 0; i < maester->numAlliances; i++) {
-        if (strcasecmp(maester->alliances[i].name, realmName) == 0) {
-            sigilPath = maester->alliances[i].sigilPath ? strdup(maester->alliances[i].sigilPath) : NULL;
-            break;
-        }
-    }
-
-    pthread_mutex_unlock(&maester->alliances_mutex);
-
-    return sigilPath;
-}
 
 // Revisa les peticions d'aliança PENDING i, si han superat el timeout (2 min)
 // sense resposta, marca l'aliança com FAILED i ALLIBERA l'envoy que esperava.

@@ -41,33 +41,17 @@ void processFrame(Maester *maester, Frame *frame, int fromSocket) {
             case MAESTER_DISCONNECT:
                 handleDisconnect(maester, frame);
                 break;
-                
-            case NACK_ERROR:
-                handleNack(maester, frame, fromSocket);
-                break;
-                
+
             case ALLIANCE_REQUEST:
                 handleAllianceRequest(maester, frame, fromSocket);
                 break;
-                
-            case SIGIL_SEND:
-                handleSigilSend(maester, frame, fromSocket);
-                break;
-                
+
             case ALLIANCE_RESPONSE:
                 handleAllianceResponse(maester, frame, fromSocket);
                 break;
-                
+
             case PRODUCT_LIST_REQUEST:
                 handleProductListRequest(maester, frame, fromSocket);
-                break;
-                
-            case ACK_FILE:
-                handleAckFile(maester, frame, fromSocket);
-                break;
-                
-            case ACK_MD5SUM:
-                handleAckMD5(maester, frame, fromSocket);
                 break;
 
             case PING_PONG:
@@ -133,17 +117,6 @@ void handleDisconnect(Maester *maester, Frame *frame) {
     // Mostrar prompt de nou
     customWrite(1, GREEN "$ " RESET);
 }
-
-void handleNack(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
-    (void)fromSocket;
-    
-    char *msg;
-    asprintf(&msg, RED "NACK from realm [%s]\n" RESET, frame->data);
-    customWrite(1, msg);
-    free(msg);
-}
-
 
 void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
@@ -256,83 +229,6 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     customWrite(1, msg);
     free(msg);
     customWrite(1, GREEN "$ " RESET);
-}
-
-void handleSigilSend(Maester *maester, Frame *frame, int fromSocket) {
-    char *msg;
-
-    if (!maester || !frame) {
-        return;
-    }
-
-    char requesterName[64];
-    requesterName[0] = '\0';
-
-    pthread_mutex_lock(&maester->alliances_mutex);
-    for (int i = 0; i < maester->numAlliances; i++) {
-        if (maester->alliances[i].ip && maester->alliances[i].port > 0) {
-            char allyIpPort[IP_SIZE];
-            snprintf(allyIpPort, sizeof(allyIpPort), "%s:%d",
-                     maester->alliances[i].ip, maester->alliances[i].port);
-            if (strcmp(allyIpPort, frame->ip_origin) == 0) {
-                strncpy(requesterName, maester->alliances[i].name, sizeof(requesterName) - 1);
-                break;
-            }
-        }
-    }
-    pthread_mutex_unlock(&maester->alliances_mutex);
-
-    if (requesterName[0] == '\0') {
-        sendNack(fromSocket, maester->name, "UNKNOWN_REQUESTER");
-        return;
-    }
-
-    // Desem el segell a la carpeta de l'usuari (camp 'path' del .dat), tractada
-    // com a RELATIVA al working directory: "/a" -> "./a". Creem la carpeta.
-    const char *folder = (maester->path && maester->path[0]) ? maester->path : ".";
-    while (*folder == '/') {
-        folder++;   // saltem les barres inicials
-    }
-    if (*folder == '\0') {
-        folder = ".";
-    }
-    mkdirRecursive(folder);  // crea tots els nivells de la ruta
-
-    char sigilPath[512];
-    snprintf(sigilPath, sizeof(sigilPath), "%s/%s.png", folder, requesterName);
-
-    int fd = open(sigilPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd < 0) {
-        asprintf(&msg, RED "ERROR | Cannot create sigil file [%s]\n" RESET, sigilPath);
-        customWrite(1, msg);
-        free(msg);
-        sendNack(fromSocket, maester->name, "FILE_ERROR");
-        return;
-    }
-
-    uint16_t dataLen = frame->data_length;  // ja en host order (deserializar_trama)
-    if (write(fd, frame->data, dataLen) < 0) {
-        close(fd);
-        asprintf(&msg, RED "ERROR | Failed to write sigil data\n" RESET);
-        customWrite(1, msg);
-        free(msg);
-        sendNack(fromSocket, maester->name, "WRITE_ERROR");
-        return;
-    }
-
-    close(fd);
-
-    int isLastChunk = (dataLen < DATA_MAX_SIZE);
-    if (isLastChunk) {
-        asprintf(&msg, CYAN ">>> Sigil received from [%s], saved to [%s]\n" RESET,
-                 requesterName, sigilPath);
-        customWrite(1, msg);
-        free(msg);
-    }
-
-    Frame ackFrame;
-    createFrame(&ackFrame, ACK_FILE, "", "", "OK");
-    sendFrame(fromSocket, &ackFrame);
 }
 
 void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
@@ -501,8 +397,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     ssize_t bytesRead;
     Frame dataFrame;
     while ((bytesRead = read(fd, chunk, DATA_MAX_SIZE)) > 0) {
-        createBinaryFrame(&dataFrame, PRODUCT_LIST_DATA, myIpPort, requesterName,
-                          chunk, (uint16_t)bytesRead);
+        createBinaryFrame(&dataFrame, PRODUCT_LIST_DATA, myIpPort, requesterName, chunk, (uint16_t)bytesRead);
         if (sendFrame(fromSocket, &dataFrame) < 0) {
             close(fd);
             unlink(tmpPath);

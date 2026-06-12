@@ -342,7 +342,6 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
         return -1;
     }
     addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_PENDING);
-    setAllianceSigil(maester, realmName, sigilPath);
 
     // El segell ja s'ha lliurat; l'envoy queda ON_MISSION esperant la decisió
     // de l'aliat (que arribarà de forma asíncrona al servidor amb el 0x03).
@@ -453,59 +452,6 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     response->frame_type = orderResp.type;
     response->result_code = ok ? 0 : -1;
     strncpy(response->payload, orderResp.data, IPC_PAYLOAD_SIZE - 1);
-    return response->result_code;
-}
-
-int envoySendSigilFile(const IpcRequest *request, IpcResponse *response) {
-    if (!request || !response) {
-        return -1;
-    }
-
-    int fd_dest = -1;
-    if (connectForRequest(request, &fd_dest) < 0) {
-        fillBasicError(response, "Cannot connect to target realm");
-        return -1;
-    }
-
-    int fd_sigil = open(request->path, O_RDONLY);
-    if (fd_sigil < 0) {
-        close(fd_dest);
-        fillBasicError(response, "Cannot open sigil file");
-        return -1;
-    }
-
-    char origin[IPC_IP_SIZE + 16];
-    snprintf(origin, sizeof(origin), "%s:%u", request->source_ip, request->source_port);
-
-    uint8_t chunk[DATA_MAX_SIZE];
-    ssize_t bytesRead;
-    Frame sigilFrame;
-
-    while ((bytesRead = read(fd_sigil, chunk, DATA_MAX_SIZE)) > 0) {
-        createBinaryFrame(&sigilFrame, SIGIL_SEND, origin, request->target_realm, chunk, (uint16_t)bytesRead);
-
-        if (sendFrame(fd_dest, &sigilFrame) < 0) {
-            close(fd_sigil);
-            close(fd_dest);
-            fillBasicError(response, "Failed to send sigil chunk");
-            return -1;
-        }
-    }
-
-    close(fd_sigil);
-
-    Frame ackFrame;
-    if (receiveFrame(fd_dest, &ackFrame) < 0) {
-        close(fd_dest);
-        fillBasicError(response, "No ACK received for sigil");
-        return -1;
-    }
-
-    close(fd_dest);
-    response->status = (ackFrame.type == ACK_FILE || ackFrame.type == ACK_MD5SUM) ? IPC_STATUS_OK : IPC_STATUS_REMOTE_ERROR;
-    response->frame_type = ackFrame.type;
-    response->result_code = (ackFrame.type == ACK_FILE || ackFrame.type == ACK_MD5SUM) ? 0 : -1;
-    strncpy(response->payload, ackFrame.data, IPC_PAYLOAD_SIZE - 1);
     return response->result_code;
 }
 

@@ -113,7 +113,3 @@ void *serverThread(void *arg) {
     }
     return NULL;
 }
-
-void cerrarWorkers(Maester *maester){
-    (void)maester;
-}

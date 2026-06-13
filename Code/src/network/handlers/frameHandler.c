@@ -192,8 +192,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     }
 
     char checkData[DATA_MAX_SIZE];
-    snprintf(checkData, DATA_MAX_SIZE, "%s&%s",
-             md5ok ? "CHECK_OK" : "CHECK_KO", maester->name);
+    snprintf(checkData, DATA_MAX_SIZE, "%s&%s", md5ok ? "CHECK_OK" : "CHECK_KO", maester->name);
     Frame checkFrame;
     createFrame(&checkFrame, ACK_MD5SUM, "", "", checkData);
     sendFrame(fromSocket, &checkFrame);
@@ -224,8 +223,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     int fd = open(sigilPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0) {
         if (sigBuf && fileSize > 0) {
-            long w = write(fd, sigBuf, (unsigned long)fileSize);
-            (void)w;  // el segell ja s'ha verificat
+            write(fd, sigBuf, (unsigned long)fileSize);
         }
         close(fd);
     } else {
@@ -335,9 +333,7 @@ void handleAllianceResponse(Maester *maester, Frame *frame, int fromSocket) {
     customWrite(1, GREEN "$ " RESET);
 }
 
-// ═══════════════════════════════════════════════════════════
 // HANDLERS DE PRODUCTOS
-// ═══════════════════════════════════════════════════════════
 void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
 
@@ -517,7 +513,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 2. Parsejar capçalera: <FileName>&<FileSize>&<MD5SUM>
+    //Parsejar capçalera: <FileName>&<FileSize>&<MD5SUM>
     char fileName[128] = "";
     long fileSize = 0;
     char expectedMd5[64] = "";
@@ -530,7 +526,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     customWrite(1, msg);
     free(msg);
 
-    // 3. ACK FITXER (0x31)
+    // ACK FITXER (0x31)
     char ackData[DATA_MAX_SIZE];
     snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
     Frame ackFrame;
@@ -539,7 +535,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 4. Rebre DADES (0x15) en un buffer en MEMÒRIA (sense temp file)
+    // Rebre DADES (0x15) en un buffer en MEMÒRIA (sense temp file)
     char *content = NULL;
     if (fileSize > 0) {
         content = malloc((unsigned long)fileSize + 1);
@@ -566,7 +562,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
         content[fileSize] = '\0';
     }
 
-    // 5. Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
+    // Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
     int md5ok = 0;
     if (!recvErr) {
         char *actualMd5 = md5_buffer((const uint8_t *)content, (unsigned long)fileSize);
@@ -579,7 +575,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     createFrame(&checkFrame, ACK_MD5SUM, "", "", checkData);
     sendFrame(fromSocket, &checkFrame);
 
-    // 6. Processar la comanda (parsejant el buffer) i preparar RESPOSTA (0x16)
+    // Processar la comanda (parsejant el buffer) i preparar RESPOSTA (0x16)
     char orderResponseData[DATA_MAX_SIZE];
     int response_ok = 1;
 
@@ -610,7 +606,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     }
     free(content);
 
-    // 7. RESPOSTA A COMANDA (0x16)
+    // RESPOSTA A COMANDA (0x16)
     Frame responseFrame;
     createFrame(&responseFrame, ORDER_RESPONSE, "", "", orderResponseData);
     sendFrame(fromSocket, &responseFrame);

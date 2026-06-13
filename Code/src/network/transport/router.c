@@ -144,12 +144,9 @@ int connectToRealmByRoute(const char *ip, int port, int *fd_out) {
     }
     
     int targetPort = port;
-    
+
     char *msg;
-    asprintf(&msg, CYAN "Connecting to %s:%d...\n" RESET, ip, targetPort);
-    customWrite(1, msg);
-    free(msg);
-    
+
     // Create TCP socket
     int fd_client = socket(AF_INET, SOCK_STREAM, 0);
     if (fd_client < 0) {
@@ -178,10 +175,6 @@ int connectToRealmByRoute(const char *ip, int port, int *fd_out) {
         close(fd_client);
         return -1;
     }
-    
-    asprintf(&msg, GREEN "Connected successfully to %s:%d\n" RESET, ip, targetPort);
-    customWrite(1, msg);
-    free(msg);
     
     // Return socket descriptor
     *fd_out = fd_client;

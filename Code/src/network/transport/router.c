@@ -2,14 +2,14 @@
 
 #include <sys/select.h>
 
-static int writeAllBytes(int fd, const uint8_t *buf, size_t n) {
-    size_t total = 0;
+static int writeAllBytes(int fd, const uint8_t *buf, unsigned long n) {
+    unsigned long total = 0;
     while (total < n) {
-        ssize_t w = write(fd, buf + total, n - total);
+        long w = write(fd, buf + total, n - total);
         if (w <= 0) {
             return -1;
         }
-        total += (size_t)w;
+        total += (unsigned long)w;
     }
     return 0;
 }
@@ -23,7 +23,7 @@ static void relayBidirectional(int a, int b) {
     uint8_t buf[1024];
     int maxfd = (a > b ? a : b) + 1;
 
-    for (;;) {
+    while (1) {
         fd_set readfds;
         struct timeval tv;
 
@@ -39,14 +39,14 @@ static void relayBidirectional(int a, int b) {
         }
 
         if (FD_ISSET(a, &readfds)) {
-            ssize_t n = read(a, buf, sizeof(buf));
-            if (n <= 0 || writeAllBytes(b, buf, (size_t)n) < 0) {
+            long n = read(a, buf, sizeof(buf));
+            if (n <= 0 || writeAllBytes(b, buf, (unsigned long)n) < 0) {
                 break;
             }
         }
         if (FD_ISSET(b, &readfds)) {
-            ssize_t n = read(b, buf, sizeof(buf));
-            if (n <= 0 || writeAllBytes(a, buf, (size_t)n) < 0) {
+            long n = read(b, buf, sizeof(buf));
+            if (n <= 0 || writeAllBytes(a, buf, (unsigned long)n) < 0) {
                 break;
             }
         }

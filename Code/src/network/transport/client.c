@@ -44,7 +44,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     }
     uint8_t *sigBuf = NULL;
     if (sigilSize > 0) {
-        sigBuf = malloc((size_t)sigilSize);
+        sigBuf = malloc((unsigned long)sigilSize);
         if (!sigBuf) {
             close(fd_sigil);
             close(fd_nextHop);
@@ -52,8 +52,8 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
             return -1;
         }
         long off = 0;
-        ssize_t r;
-        while (off < sigilSize && (r = read(fd_sigil, sigBuf + off, (size_t)(sigilSize - off))) > 0) {
+        long r;
+        while (off < sigilSize && (r = read(fd_sigil, sigBuf + off, (unsigned long)(sigilSize - off))) > 0) {
             off += r;
         }
         if (off != sigilSize) {
@@ -66,7 +66,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     }
     close(fd_sigil);
 
-    char *md5 = md5_buffer(sigBuf, (size_t)sigilSize);
+    char *md5 = md5_buffer(sigBuf, (unsigned long)sigilSize);
     if (!md5) {
         free(sigBuf);
         close(fd_nextHop);
@@ -233,7 +233,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
     // 4. Rebre les DADES (0x13) en un buffer en MEMÒRIA (sense temp file)
     uint8_t *recvBuf = NULL;
     if (fileSize > 0) {
-        recvBuf = malloc((size_t)fileSize);
+        recvBuf = malloc((unsigned long)fileSize);
         if (!recvBuf) {
             close(fd_dest);
             fillBasicError(response, "Cannot allocate product buffer");
@@ -258,7 +258,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
     }
 
     // 5. Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
-    char *actualMd5 = md5_buffer(recvBuf, (size_t)fileSize);
+    char *actualMd5 = md5_buffer(recvBuf, (unsigned long)fileSize);
     int md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
     free(actualMd5);
 
@@ -279,23 +279,23 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
     // Èxit: l'envoy mostra la taula (comparteix stdout amb el Maester) i torna
     // "name,weight|name,weight|..." al payload perquè el Maester cachegi nom i pes
     // per unitat (cal per actualitzar l'inventari del comprador a START TRADE).
-    listRemoteInventoryBuf(request->target_realm, recvBuf, (size_t)fileSize);
+    listRemoteInventoryBuf(request->target_realm, recvBuf, (unsigned long)fileSize);
 
     response->payload[0] = '\0';
-    size_t off = 0;
+    unsigned long off = 0;
     long nRecords = fileSize / (long)sizeof(AuxiliarProduct);
     for (long i = 0; i < nRecords; i++) {
         AuxiliarProduct aux;
-        memcpy(&aux, recvBuf + (size_t)i * sizeof(AuxiliarProduct), sizeof(AuxiliarProduct));
+        memcpy(&aux, recvBuf + (unsigned long)i * sizeof(AuxiliarProduct), sizeof(AuxiliarProduct));
         aux.name[sizeof(aux.name) - 1] = '\0';
         char entry[160];
         int el = snprintf(entry, sizeof(entry), "%s%s,%.2f",
                           (off > 0) ? "|" : "", aux.name, aux.weight);
-        if (el < 0 || off + (size_t)el >= IPC_PAYLOAD_SIZE) {
+        if (el < 0 || off + (unsigned long)el >= IPC_PAYLOAD_SIZE) {
             break;  // no cap més al payload
         }
-        memcpy(response->payload + off, entry, (size_t)el);
-        off += (size_t)el;
+        memcpy(response->payload + off, entry, (unsigned long)el);
+        off += (unsigned long)el;
         response->payload[off] = '\0';
     }
     free(recvBuf);
@@ -424,7 +424,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     // Llegim la comanda SENCERA a memòria (md5 sense temp file)
     uint8_t *tradeBuf = NULL;
     if (fileSize > 0) {
-        tradeBuf = malloc((size_t)fileSize);
+        tradeBuf = malloc((unsigned long)fileSize);
         if (!tradeBuf) {
             close(fd_trade);
             close(fd_dest);
@@ -432,8 +432,8 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
             return -1;
         }
         long roff = 0;
-        ssize_t r;
-        while (roff < fileSize && (r = read(fd_trade, tradeBuf + roff, (size_t)(fileSize - roff))) > 0) {
+        long r;
+        while (roff < fileSize && (r = read(fd_trade, tradeBuf + roff, (unsigned long)(fileSize - roff))) > 0) {
             roff += r;
         }
         if (roff != fileSize) {
@@ -449,7 +449,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     char origin[IPC_IP_SIZE + 16];
     snprintf(origin, sizeof(origin), "%s:%u", request->source_ip, request->source_port);
 
-    char *md5 = md5_buffer(tradeBuf, (size_t)fileSize);
+    char *md5 = md5_buffer(tradeBuf, (unsigned long)fileSize);
     if (!md5) {
         free(tradeBuf);
         close(fd_dest);

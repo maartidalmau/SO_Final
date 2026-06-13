@@ -4,6 +4,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-char* md5_buffer(const uint8_t *data, size_t len);
+char* md5_buffer(const uint8_t *data, unsigned long len);
 
 #endif // MD5_H

@@ -1,7 +1,5 @@
 #include "utils.h"
 
-pthread_mutex_t stdoutMutex = PTHREAD_MUTEX_INITIALIZER;
-
 void safeFree(void** ptr) {
     if (ptr != NULL && *ptr != NULL) {
         free(*ptr);
@@ -10,6 +8,8 @@ void safeFree(void** ptr) {
 }
 
 void customWrite(int fdesc, char* string) {
+    static pthread_mutex_t stdoutMutex = PTHREAD_MUTEX_INITIALIZER;
+
     pthread_mutex_lock(&stdoutMutex);
     write(fdesc, string, strlen(string));
     pthread_mutex_unlock(&stdoutMutex);

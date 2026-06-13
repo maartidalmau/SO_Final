@@ -24,7 +24,7 @@ void createFrame(Frame *frame, uint8_t type, const char *origin, const char *des
 
     // Copy the data if provided
     if (data) {
-        size_t dataLen = strlen(data);
+        unsigned long dataLen = strlen(data);
         if (dataLen > DATA_MAX_SIZE) {
             dataLen = DATA_MAX_SIZE;
         }
@@ -108,11 +108,11 @@ int sendFrame(int fd_client, Frame *frame) {
     serializar_trama(frame, buffer);
     
     // Enviar los 320 bytes por el socket
-    ssize_t totalSent = 0;
-    ssize_t bytesLeft = TRAMA_SIZE;
+    long totalSent = 0;
+    long bytesLeft = TRAMA_SIZE;
     
     while (totalSent < TRAMA_SIZE) {
-        ssize_t sent = write(fd_client, buffer + totalSent, bytesLeft);
+        long sent = write(fd_client, buffer + totalSent, bytesLeft);
         
         if (sent < 0) {
             // Error al enviar
@@ -140,11 +140,11 @@ int receiveFrame(int fd_client, Frame *frame) {
     uint8_t buffer[TRAMA_SIZE];
     
     // Recibir los 320 bytes del socket
-    ssize_t totalReceived = 0;
-    ssize_t bytesLeft = TRAMA_SIZE;
+    long totalReceived = 0;
+    long bytesLeft = TRAMA_SIZE;
     
     while (totalReceived < TRAMA_SIZE) {
-        ssize_t received = read(fd_client, buffer + totalReceived, bytesLeft);
+        long received = read(fd_client, buffer + totalReceived, bytesLeft);
         
         if (received < 0) {
             // Error al recibir

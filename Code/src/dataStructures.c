@@ -143,7 +143,7 @@ int readProducts(char *filename, Maester *maester) {
     maester->numProducts = 0;
 
     AuxiliarProduct aux;
-    ssize_t bytesRead;
+    long bytesRead;
 
     while ((bytesRead = read(fd, &aux, sizeof(AuxiliarProduct))) > 0) {
         // Verificar lectura completa del registre

@@ -7,7 +7,7 @@
 // Calcula l'MD5 d'un buffer en MEMÒRIA (sense fitxers temporals): li passem les
 // dades a md5sum per stdin (md5sum sense argument llegeix de stdin) i llegim el
 // hash per stdout. Retorna 32 caràcters hex (cal free) o NULL.
-char* md5_buffer(const uint8_t *data, size_t len) {
+char* md5_buffer(const uint8_t *data, unsigned long len) {
     int in[2], out[2];
     if (pipe(in) < 0) {
         return NULL;
@@ -32,25 +32,25 @@ char* md5_buffer(const uint8_t *data, size_t len) {
         close(in[0]); close(in[1]);
         close(out[0]); close(out[1]);
         execlp("md5sum", "md5sum", (char *)NULL);
-        _exit(-1);
+        exit(1);
     }
 
     // Pare: tanquem els extrems que no fem servir
     close(in[0]);
     close(out[1]);
 
-    // 1) Escrivim totes les dades a stdin de md5sum i tanquem (EOF -> calcula)
-    size_t off = 0;
+    //Escrivim totes les dades a stdin de md5sum i tanquem (EOF -> calcula)
+    unsigned long off = 0;
     while (off < len) {
-        ssize_t w = write(in[1], data + off, len - off);
+        long w = write(in[1], data + off, len - off);
         if (w <= 0) {
             break;
         }
-        off += (size_t)w;
+        off += (unsigned long)w;
     }
     close(in[1]);
 
-    // 2) Llegim els 32 hex de la sortida
+    //Llegim els 32 hex de la sortida
     char *result = malloc(33);
     if (!result) {
         close(out[0]);
@@ -58,7 +58,7 @@ char* md5_buffer(const uint8_t *data, size_t len) {
         return NULL;
     }
     int total = 0;
-    ssize_t n;
+    long n;
     while (total < 32 && (n = read(out[0], result + total, 32 - total)) > 0) {
         total += (int)n;
     }

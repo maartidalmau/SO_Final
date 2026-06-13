@@ -53,7 +53,7 @@ void listInventory(Maester *maester) {
 
 // Mostra l'inventari d'un regne aliat (rebut en un buffer en MEMÒRIA de registres
 // AuxiliarProduct) amb el MATEIX format que l'inventari propi, titulat amb el regne.
-void listRemoteInventoryBuf(const char *realmName, const uint8_t *buf, size_t len) {
+void listRemoteInventoryBuf(const char *realmName, const uint8_t *buf, unsigned long len) {
     char *msg;
     asprintf(&msg, MAGENTA "--- Trade Ledger of %s ---\n" RESET, realmName);
     customWrite(1, msg);
@@ -64,7 +64,7 @@ void listRemoteInventoryBuf(const char *realmName, const uint8_t *buf, size_t le
     long count = (buf && len) ? (long)(len / sizeof(AuxiliarProduct)) : 0;
     for (long i = 0; i < count; i++) {
         AuxiliarProduct aux;
-        memcpy(&aux, buf + (size_t)i * sizeof(AuxiliarProduct), sizeof(AuxiliarProduct));
+        memcpy(&aux, buf + (unsigned long)i * sizeof(AuxiliarProduct), sizeof(AuxiliarProduct));
         aux.name[sizeof(aux.name) - 1] = '\0';
         asprintf(&msg, "%s%-30s | %-12d | %-12.1f%s\n",
                  CYAN, aux.name, aux.amount, aux.weight, RESET);

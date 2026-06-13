@@ -6,7 +6,7 @@ static void mkdirRecursive(const char *path) {
         return;
     }
     char tmp[512];
-    size_t n = strlen(path);
+    unsigned long n = strlen(path);
     if (n >= sizeof(tmp)) {
         n = sizeof(tmp) - 1;
     }
@@ -162,7 +162,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     // 5. Rebre el segell (0x02) en un buffer en MEMÒRIA (sense temp file)
     uint8_t *sigBuf = NULL;
     if (fileSize > 0) {
-        sigBuf = malloc((size_t)fileSize);
+        sigBuf = malloc((unsigned long)fileSize);
         if (!sigBuf) {
             sendNack(fromSocket, maester->name, "MEM_ERROR");
             return;
@@ -186,7 +186,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     // 6. Verificar md5 (en memòria) i respondre ACK MD5SUM (0x32)
     int md5ok = 0;
     if (!recvErr) {
-        char *actualMd5 = md5_buffer(sigBuf, (size_t)fileSize);
+        char *actualMd5 = md5_buffer(sigBuf, (unsigned long)fileSize);
         md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
         free(actualMd5);
     }
@@ -224,8 +224,8 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     int fd = open(sigilPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0) {
         if (sigBuf && fileSize > 0) {
-            ssize_t w = write(fd, sigBuf, (size_t)fileSize);
-            (void)w;  // el segell ja s'ha verificat; desar-lo és best-effort
+            long w = write(fd, sigBuf, (unsigned long)fileSize);
+            (void)w;  // el segell ja s'ha verificat
         }
         close(fd);
     } else {
@@ -365,7 +365,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     long fileSize = (long)maester->numProducts * (long)sizeof(AuxiliarProduct);
     uint8_t *invBuf = NULL;
     if (fileSize > 0) {
-        invBuf = malloc((size_t)fileSize);
+        invBuf = malloc((unsigned long)fileSize);
         if (!invBuf) {
             sendNack(fromSocket, maester->name, "MEM_ERROR");
             return;
@@ -377,12 +377,12 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
             strncpy(aux.name, maester->inventory[i].name, sizeof(aux.name) - 1);
             aux.amount = maester->inventory[i].amount;
             aux.weight = maester->inventory[i].weight;
-            memcpy(invBuf + (size_t)i * sizeof(AuxiliarProduct), &aux, sizeof(AuxiliarProduct));
+            memcpy(invBuf + (unsigned long)i * sizeof(AuxiliarProduct), &aux, sizeof(AuxiliarProduct));
         }
         pthread_mutex_unlock(&maester->inventory_mutex);
     }
 
-    char *md5 = md5_buffer(invBuf, (size_t)fileSize);
+    char *md5 = md5_buffer(invBuf, (unsigned long)fileSize);
     if (!md5) {
         free(invBuf);
         sendNack(fromSocket, maester->name, "MD5_ERROR");
@@ -542,7 +542,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     // 4. Rebre DADES (0x15) en un buffer en MEMÒRIA (sense temp file)
     char *content = NULL;
     if (fileSize > 0) {
-        content = malloc((size_t)fileSize + 1);
+        content = malloc((unsigned long)fileSize + 1);
         if (!content) {
             sendNack(fromSocket, maester->name, "MEM_ERROR");
             return;
@@ -569,7 +569,7 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     // 5. Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
     int md5ok = 0;
     if (!recvErr) {
-        char *actualMd5 = md5_buffer((const uint8_t *)content, (size_t)fileSize);
+        char *actualMd5 = md5_buffer((const uint8_t *)content, (unsigned long)fileSize);
         md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
         free(actualMd5);
     }

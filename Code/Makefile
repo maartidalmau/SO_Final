@@ -1,4 +1,4 @@
-CFLAGS = -Wextra -Wall -MMD -MP -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
+CFLAGS = -Wextra -Wall -Iinclude -Iinclude/core -Iinclude/console -Iinclude/network
 LDFLAGS = -lpthread
 
 maester: maester.o dataStructures.o utils.o console_console.o console_list.o console_trade.o network_envoy.o network_frame.o network_network.o network_allianceHandler.o network_frameHandler.o network_server.o network_client.o network_router.o network_ipc.o semaphore_v2.o core_md5.o
@@ -56,7 +56,7 @@ core_md5.o: src/core/md5.c include/core/md5.h
 	gcc -c -g src/core/md5.c -o core_md5.o $(CFLAGS)
 
 clean:
-	rm -f *.o *.d maester Maester
+	rm -f *.o maester Maester
 
 valgrind: maester
 	valgrind --leak-check=yes --track-fds=yes --show-reachable=yes --track-origins=yes --tool=memcheck ./maester $(ARGS)

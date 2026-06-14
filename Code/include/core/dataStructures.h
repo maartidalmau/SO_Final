@@ -146,9 +146,6 @@ float remoteCatalogWeight(Maester *maester, const char *realmName, const char *p
 
 int decrementInventory(Maester *maester, const char *productName, int quantity);
 
-// Aplica una comanda sencera de forma ATÒMICA sota el mutex d'inventari.
-// Retorna: 0 = OK (decrementat), 1 = UNKNOWN_PRODUCT, 2 = OUT_OF_STOCK.
-// Si falla NO modifica res (rollback) i copia el producte problemàtic a badOut.
 int applyOrder(Maester *maester, char **names, int *quantities, int n, char *badOut, int badSize);
 
 int incrementInventory(Maester *maester, const char *productName, int quantity, float weight);

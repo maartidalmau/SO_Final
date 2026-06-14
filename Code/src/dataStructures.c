@@ -65,7 +65,6 @@ int readConfigFile(char *filename, Maester *maester) {
     //Read name var
     customRead(fd, &(maester->name), '\n');
     // El nom del regne és case sensitive, però cal eliminar-ne els '&'
-    // (caràcter reservat del protocol), igual que es fa amb les rutes.
     removeChar(maester->name, '&');
 
     //Read path var
@@ -469,9 +468,6 @@ int applyOrder(Maester *maester, char **names, int *quantities, int n, char *bad
     int applied = 0;
     int result = 0;  // 0 OK, 1 UNKNOWN_PRODUCT, 2 OUT_OF_STOCK
 
-    // Pas únic sota el mutex: validem i decrementem alhora. Com que tot passa
-    // dins del mateix lock, cap altre fil pot modificar l'inventari entremig, i
-    // si fallem desfem (rollback) els decrements ja aplicats -> atomicitat.
     for (int k = 0; k < n; k++) {
         int idx = findInventoryIndex(maester, names[k]);
         if (idx < 0) {

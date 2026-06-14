@@ -27,15 +27,12 @@ int checkRealm(Trade *trade, Maester *maester) {
         return 0;
     }
 
-    // Vàlid si el regne és a la taula de rutes...
     for (int i = 0; i < maester->numRoutes; i++) {
         if (strcasecmp(trade->kingdom, maester->routes[i].name) == 0) {
             return 1;
         }
     }
 
-    // ...o si ja hi tenim una aliança (s'hi pot arribar encara que no estigui
-    // llistat a les rutes estàtiques: per hops o per la IP directa compartida).
     int status = ALLIANCE_NONE;
     if (getAllianceInfo(maester, trade->kingdom, NULL, NULL, &status, NULL)) {
         return 1;

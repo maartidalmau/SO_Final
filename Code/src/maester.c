@@ -20,8 +20,7 @@ void rsiCtrlC() {
     }
 }
 
-// Vigilant de timeouts: cada pocs segons revisa les peticions d'aliança
-// PENDING i allibera l'envoy de les que han superat els 2 minuts sense resposta.
+// Vigilant de timeouts: cada segon revisa les peticions d'aliança
 void *timeoutThread(void *arg) {
     Maester *maester = (Maester *)arg;
     while (maester->running) {

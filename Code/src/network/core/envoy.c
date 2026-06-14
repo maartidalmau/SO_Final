@@ -174,10 +174,6 @@ int releaseEnvoyMissionForRealm(Maester *maester, const char *realmName, const c
         return 0;
     }
 
-    // Construïm la missió esperada ("PLEDGE to <realm>") i la comparem de forma
-    // INSENSIBLE a majúscules: el nom que va escriure l'usuari pot diferir en
-    // capitalització del nom canònic que arriba a la resposta (p. ex.
-    // "Kingslanding" vs "KingsLanding"), i abans no s'alliberava l'envoy.
     char *expected = NULL;
     asprintf(&expected, "%s%s", missionPrefix, realmName);
     if (!expected) {

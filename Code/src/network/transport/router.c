@@ -18,7 +18,7 @@ static void relayBidirectional(const char *myName, int a, int b) {
         FD_ZERO(&readfds);
         FD_SET(a, &readfds);
         FD_SET(b, &readfds);
-        tv.tv_sec = 125;   // > 2 min (timeout del protocol); evita relays penjats
+        tv.tv_sec = 125;   // timeout del protocol per evita relays penjats
         tv.tv_usec = 0;
 
         int sel = select(maxfd, &readfds, NULL, NULL, &tv);

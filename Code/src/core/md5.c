@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-// Calcula l'MD5 d'un buffer en MEMÒRIA (sense fitxers temporals): li passem les
+// Calcula l'MD5 d'un buffer en MEMÒRIA: li passem les
 // dades a md5sum per stdin (md5sum sense argument llegeix de stdin) i llegim el
 // hash per stdout. Retorna 32 caràcters hex (cal free) o NULL.
 char* md5_buffer(const uint8_t *data, unsigned long len) {

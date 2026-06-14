@@ -16,7 +16,6 @@ void *workerThread(void *arg) {
         return NULL;
     }
     
-    // 2. Validar checksum
     if (!validateChecksum(&frame)) {
         sendNack(args->clientSocket, args->maester->name, "CHECKSUM");
         close(args->clientSocket);
@@ -24,10 +23,8 @@ void *workerThread(void *arg) {
         return NULL;
     }
     
-    // 4. Procesar frame (dispatcher)
     processFrame(args->maester, &frame, args->clientSocket);
     
-    // 5. Cerrar conexión
     close(args->clientSocket);
     free(args);
     
@@ -35,7 +32,6 @@ void *workerThread(void *arg) {
 }
 
 void *serverThread(void *arg) {
-    //Obtain maester struct
     Maester *maester = (Maester *)arg;
 
     struct sockaddr_in serverAddr;
@@ -90,9 +86,7 @@ void *serverThread(void *arg) {
             continue;
         }
         
-        // Timeout de lectura: una connexió entrant que es queda a mitges (algú
-        // connecta i no envia la trama, o un fitxer que es talla) no ha de
-        // bloquejar el worker indefinidament. 125s > 2 min del protocol.
+        // Timeout de lectura: una connexió entrant que es queda a mitges
         struct timeval rcvTimeout;
         rcvTimeout.tv_sec = 125;
         rcvTimeout.tv_usec = 0;

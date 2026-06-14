@@ -79,7 +79,6 @@ int sendNack(int fd, const char *realmName, const char *errorCode) {
     customWrite(1, msg);
     free(msg);
     
-    // Create and send NACK frame (TYPE 0x69, ORIGIN/DESTINATION buits)
     Frame nackFrame;
     createFrame(&nackFrame, NACK_ERROR, "", "", realmName);
     
@@ -123,7 +122,7 @@ int receiveFrame(int fd_client, Frame *frame) {
     // Buffer para recibir la trama (320 bytes)
     uint8_t buffer[TRAMA_SIZE];
 
-    //Utilitzem aixo per evitar lectura parcial i fer-ho 'dun sol cop
+    //Utilitzem aixo per evitar lectura parcial i fer-ho en un sol cop
     long received = recv(fd_client, buffer, TRAMA_SIZE, MSG_WAITALL);
 
     if (received != TRAMA_SIZE) {

@@ -78,7 +78,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     const char *slash = strrchr(request->path, '/');
     const char *sigilName = slash ? slash + 1 : request->path;
 
-    // 1. HEADER (0x01): RealmName&SigilName&FileSize&MD5SUM
+    // HEADER (0x01): RealmName&SigilName&FileSize&MD5SUM
     char frameData[DATA_MAX_SIZE];
     snprintf(frameData, DATA_MAX_SIZE, "%.63s&%.100s&%lld&%s",
              request->source_realm, sigilName, (long long)sigilSize, md5);
@@ -93,7 +93,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
-    // 2. Esperem ACK FITXER (0x31): B està llest per rebre el segell
+    // Esperem ACK FITXER (0x31): B està llest per rebre el segell
     Frame ackFrame;
     if (receiveFrame(fd_nextHop, &ackFrame) < 0 ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
@@ -103,7 +103,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
-    // 3. Enviem el segell en blocs binaris (0x02) des del buffer en memòria
+    // Enviem el segell en blocs binaris (0x02) des del buffer en memòria
     Frame dataFrame;
     long sent = 0;
     while (sent < sigilSize) {
@@ -121,7 +121,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
     }
     free(sigBuf);
 
-    // 4. Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
+    // Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
     Frame checkFrame;
     if (receiveFrame(fd_nextHop, &checkFrame) < 0) {
         close(fd_nextHop);
@@ -184,7 +184,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
     char origin[IPC_IP_SIZE + 16];
     snprintf(origin, sizeof(origin), "%s:%u", request->source_ip, request->source_port);
 
-    // 1. PETICIÓ (0x11)
+    // PETICIÓ (0x11)
     Frame requestFrame;
     createFrame(&requestFrame, PRODUCT_LIST_REQUEST, origin, request->target_realm, request->source_realm);
     if (sendFrame(fd_dest, &requestFrame) < 0) {
@@ -193,7 +193,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
         return -1;
     }
 
-    // 2. HEADER (0x12) o trama d'error (0x25/0x69)
+    // HEADER (0x12) o trama d'error (0x25/0x69)
     Frame headerFrame;
     if (receiveFrame(fd_dest, &headerFrame) < 0) {
         close(fd_dest);
@@ -219,7 +219,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
         return -1;
     }
 
-    // 3. ACK FITXER (0x31) -> estem llestos per rebre
+    // ACK FITXER (0x31) -> estem llestos per rebre
     Frame ackFrame;
     char ackData[DATA_MAX_SIZE];
     snprintf(ackData, DATA_MAX_SIZE, "OK&%s", request->source_realm);
@@ -230,7 +230,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
         return -1;
     }
 
-    // 4. Rebre les DADES (0x13) en un buffer en MEMÒRIA (sense temp file)
+    // Rebre les DADES (0x13) en un buffer en MEMÒRIA (sense temp file)
     uint8_t *recvBuf = NULL;
     if (fileSize > 0) {
         recvBuf = malloc((unsigned long)fileSize);
@@ -257,7 +257,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
         received += len;
     }
 
-    // 5. Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
+    // Verificar md5 (en memòria) i enviar ACK MD5SUM (0x32)
     char *actualMd5 = md5_buffer(recvBuf, (unsigned long)fileSize);
     int md5ok = (actualMd5 && strcmp(actualMd5, expectedMd5) == 0);
     free(actualMd5);
@@ -276,9 +276,6 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
         return -1;
     }
 
-    // Èxit: l'envoy mostra la taula (comparteix stdout amb el Maester) i torna
-    // "name,weight|name,weight|..." al payload perquè el Maester cachegi nom i pes
-    // per unitat (cal per actualitzar l'inventari del comprador a START TRADE).
     listRemoteInventoryBuf(request->target_realm, recvBuf, (unsigned long)fileSize);
 
     response->payload[0] = '\0';
@@ -378,8 +375,6 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     free(routeIp);
 
     if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) < 0 || response.status != IPC_STATUS_OK) {
-        // Mostrem la causa concreta (la porta l'envoy a response.payload): fitxer
-        // de segell inexistent, sense ruta, connexió rebutjada, md5 KO, etc.
         if (response.payload[0] != '\0') {
             asprintf(&msg, RED "ERROR | Pledge to [%s] failed: %s\n" RESET, realmName, response.payload);
         } else {
@@ -391,9 +386,6 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
         return -1;
     }
     addOrUpdateAlliance(maester, realmName, NULL, 0, ALLIANCE_PENDING);
-
-    // El segell ja s'ha lliurat; l'envoy queda ON_MISSION esperant la decisió
-    // de l'aliat (que arribarà de forma asíncrona al servidor amb el 0x03).
     asprintf(&msg, GREEN "Pledge sent to %s. Envoy %d is on its way.\n" RESET,
              realmName, envoyIndex + 1);
     customWrite(1, msg);
@@ -464,7 +456,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
-    // 1. HEADER (0x14): FileName&FileSize&MD5SUM
+    // HEADER (0x14): FileName&FileSize&MD5SUM
     char headerData[DATA_MAX_SIZE];
     snprintf(headerData, DATA_MAX_SIZE, "order.txt&%lld&%s", (long long)fileSize, md5);
     free(md5);
@@ -478,7 +470,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
-    // 2. Esperem ACK FITXER (0x31)
+    // Esperem ACK FITXER (0x31)
     Frame ackFrame;
     if (receiveFrame(fd_dest, &ackFrame) < 0 ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
@@ -488,7 +480,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
-    // 3. Enviem la comanda en blocs (0x15) des del buffer en memòria
+    // Enviem la comanda en blocs (0x15) des del buffer en memòria
     Frame dataFrame;
     long sent = 0;
     while (sent < fileSize) {
@@ -506,7 +498,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
     }
     free(tradeBuf);
 
-    // 4. Rebem ACK MD5SUM (0x32)
+    // Rebem ACK MD5SUM (0x32)
     Frame checkFrame;
     if (receiveFrame(fd_dest, &checkFrame) < 0) {
         close(fd_dest);
@@ -514,7 +506,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
         return -1;
     }
 
-    // 5. Rebem RESPOSTA A COMANDA (0x16): OK o REJECT&<reason>
+    // Rebem RESPOSTA A COMANDA (0x16): OK o REJECT&<reason>
     Frame orderResp;
     if (receiveFrame(fd_dest, &orderResp) < 0) {
         close(fd_dest);
@@ -538,7 +530,7 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
     
     char *msg;
     
-    // 1. Buscar l'aliança PENDING amb aquest regne (thread-safe)
+    // Buscar l'aliança PENDING amb aquest regne (thread-safe)
     char *savedIp = NULL;
     int savedPort = 0;
     int allianceStatus = ALLIANCE_NONE;
@@ -558,7 +550,7 @@ int sendAllianceResponse(Maester *maester, const char *realmName, int accept) {
         return -1;
     }
     
-    // 2. Verificar que tenim IP (vol dir que hem REBUT la petició, no enviat)
+    // Verificar que tenim IP (vol dir que hem REBUT la petició, no enviat)
     if (!savedIp || savedPort <= 0) {
         asprintf(&msg, RED "ERROR | You sent this request, wait for their response\n" RESET);
         customWrite(1, msg);
@@ -620,8 +612,6 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
     
     char *msg;
     
-    // 1. Buscar ruta al regne aliat (thread-safe)
-    // Primero intentamos conexión directa si tenemos IP del aliado
     char *allyIp = NULL;
     int allyPort = 0;
     int allyStatus = ALLIANCE_NONE;
@@ -633,7 +623,7 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
         return -1;
     }
     
-    // 2. Determinar cómo conectar: directo al aliado o via ruta
+    //Determinar cómo conectar: directo al aliado o via ruta
     char *targetIp = NULL;
     int targetPort = 0;
     
@@ -680,8 +670,6 @@ int sendProductListRequest(Maester *maester, const char *realmName) {
 
     if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) == 0 &&
         response.status == IPC_STATUS_OK) {
-        // L'envoy ja ha mostrat la taula. response.payload porta els noms dels
-        // productes ("name1|name2|...") per cachejar-los i validar-los a START TRADE.
         updateRemoteCatalog(maester, realmName, response.payload);
         releaseEnvoy(maester, envoyIndex);
         return 0;

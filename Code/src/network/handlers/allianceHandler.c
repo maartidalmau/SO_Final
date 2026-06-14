@@ -112,8 +112,8 @@ void sweepPledgeTimeouts(Maester *maester) {
 
     time_t now = time(NULL);
 
-    // 1) Sota el mutex: recollim els noms dels pledges PENDING caducats (no
-    //    canviem l'estat encara per no anidar locks amb releaseEnvoy...).
+    // Sota el mutex: recollim els noms dels pledges PENDING caducats (no
+    // canviem l'estat encara per no anidar locks amb releaseEnvoy...).
     char **candidates = NULL;
     int count = 0;
     pthread_mutex_lock(&maester->alliances_mutex);
@@ -129,8 +129,8 @@ void sweepPledgeTimeouts(Maester *maester) {
     }
     pthread_mutex_unlock(&maester->alliances_mutex);
 
-    // 2) Fora del mutex: si hi havia un envoy nostre en missió (pledge SORTINT),
-    //    l'alliberem i marquem l'aliança com FAILED. Si no hi ha envoy (petició
+    // Fora del mutex: si hi havia un envoy nostre en missió (pledge SORTINT),
+    // l'alliberem i marquem l'aliança com FAILED. Si no hi ha envoy (petició
     //    ENTRANT), no la toquem aquí.
     for (int i = 0; i < count; i++) {
         if (releaseEnvoyMissionForRealm(maester, candidates[i], "PLEDGE to ")) {

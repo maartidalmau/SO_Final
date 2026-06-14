@@ -121,14 +121,13 @@ void handleDisconnect(Maester *maester, Frame *frame) {
 void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     char *msg;
 
-    // 1. Parsejar DATA: <RealmName>&<SigilName>&<FileSize>&<MD5SUM>
+    //Parsejar DATA: <RealmName>&<SigilName>&<FileSize>&<MD5SUM>
     char requesterName[64] = "";
     char sigilName[64] = "";
     long fileSize = 0;
     char expectedMd5[64] = "";
 
-    if (sscanf(frame->data, "%63[^&]&%63[^&]&%ld&%63s",
-               requesterName, sigilName, &fileSize, expectedMd5) < 4) {
+    if (sscanf(frame->data, "%63[^&]&%63[^&]&%ld&%63s", requesterName, sigilName, &fileSize, expectedMd5) < 4) {
         asprintf(&msg, RED "ERROR | Invalid alliance request format\n" RESET);
         customWrite(1, msg);
         free(msg);
@@ -136,7 +135,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 2. Parsejar ORIGIN per obtenir IP:Port del sol·licitant
+    //Parsejar ORIGIN per obtenir IP:Port del sol·licitant
     char requesterIp[32];
     int requesterPort = 0;
     if (sscanf(frame->ip_origin, "%31[^:]:%d", requesterIp, &requesterPort) != 2) {
@@ -147,10 +146,10 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 3. Guardar aliança PENDING amb la IP del sol·licitant (per respondre després)
+    //Guardar aliança PENDING amb la IP del sol·licitant (per respondre després)
     addOrUpdateAlliance(maester, requesterName, requesterIp, requesterPort, ALLIANCE_PENDING);
 
-    // 4. ACK FITXER (0x31): confirmem que estem llestos per rebre el segell
+    //ACK FITXER (0x31): confirmem que estem llestos per rebre el segell
     char ackData[DATA_MAX_SIZE];
     snprintf(ackData, DATA_MAX_SIZE, "OK&%s", maester->name);
     Frame ackFrame;
@@ -159,7 +158,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 5. Rebre el segell (0x02) en un buffer en MEMÒRIA (sense temp file)
+    //Rebre el segell (0x02) en un buffer en MEMÒRIA (sense temp file)
     uint8_t *sigBuf = NULL;
     if (fileSize > 0) {
         sigBuf = malloc((unsigned long)fileSize);
@@ -183,7 +182,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
         received += len;
     }
 
-    // 6. Verificar md5 (en memòria) i respondre ACK MD5SUM (0x32)
+    //Verificar md5 (en memòria) i respondre ACK MD5SUM (0x32)
     int md5ok = 0;
     if (!recvErr) {
         char *actualMd5 = md5_buffer(sigBuf, (unsigned long)fileSize);
@@ -233,7 +232,7 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     }
     free(sigBuf);
 
-    // 7. Segell OK: avisem l'usuari, que decidirà amb PLEDGE RESPOND
+    //Segell OK: avisem l'usuari, que decidirà amb PLEDGE RESPOND
     asprintf(&msg, MAGENTA "\n>>> Alliance request received from %s (sigil verified).\n" RESET, requesterName);
     customWrite(1, msg);
     free(msg);
@@ -358,7 +357,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 1. Serialitzem el nostre inventari a un buffer en MEMÒRIA (sense temp file)
+    // Serialitzem el nostre inventari a un buffer en MEMÒRIA (sense temp file)
     long fileSize = (long)maester->numProducts * (long)sizeof(AuxiliarProduct);
     uint8_t *invBuf = NULL;
     if (fileSize > 0) {
@@ -386,7 +385,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 2. Trama HEADER (0x12): FileName&FileSize&MD5SUM
+    //Trama HEADER (0x12): FileName&FileSize&MD5SUM
     char headerData[DATA_MAX_SIZE];
     snprintf(headerData, DATA_MAX_SIZE, "products.db&%ld&%s", fileSize, md5);
     free(md5);
@@ -398,7 +397,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 3. Esperem ACK FITXER (0x31) conforme el sol·licitant està llest
+    // Esperem ACK FITXER (0x31) conforme el sol·licitant està llest
     Frame ackFrame;
     if (receiveFrame(fromSocket, &ackFrame) < 0 ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
@@ -406,7 +405,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         return;
     }
 
-    // 4. Enviem el buffer en blocs binaris (0x13)
+    // Enviem el buffer en blocs binaris (0x13)
     Frame dataFrame;
     long sent = 0;
     while (sent < fileSize) {
@@ -422,7 +421,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
     }
     free(invBuf);
 
-    // 5. Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
+    // Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
     Frame checkFrame;
     if (receiveFrame(fromSocket, &checkFrame) == 0 &&
         checkFrame.type == ACK_MD5SUM && strncmp(checkFrame.data, "CHECK_OK", 8) == 0) {
@@ -487,14 +486,11 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     if (!maester || !frame) {
         return;
     }
-
-    // El handler pren el control del socket en rebre la capçalera (0x14) i
-    // gestiona tot l'intercanvi de la comanda en una sola connexió.
     if (frame->type != ORDER_REQUEST_HEADER) {
         return;
     }
 
-    // 1. Identificar el regne sol·licitant per IP:Port (ha de ser aliat)
+    // Identificar el regne sol·licitant per IP:Port (ha de ser aliat)
     char requesterName[64];
     requesterName[0] = '\0';
     pthread_mutex_lock(&maester->alliances_mutex);

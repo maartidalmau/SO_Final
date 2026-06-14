@@ -122,13 +122,19 @@ int receiveFrame(int fd_client, Frame *frame) {
     if (fd_client < 0 || !frame) {
         return -1;
     }
-
     // Buffer para recibir la trama (320 bytes)
     uint8_t buffer[TRAMA_SIZE];
 
     // Lectura ÚNICA de la trama sencera (320B), tal com indica l'enunciat
     // (Annex II): "llegir amb un sol read ... de 320B".
-    long received = read(fd_client, buffer, TRAMA_SIZE);
+    long received = recv(fd_client, buffer, TRAMA_SIZE, MSG_WAITALL);
+    
+    char *dbg;
+    asprintf(&dbg, YELLOW "[receiveFrame] read() -> %ld bytes (esperados %d)\n" RESET,
+             received, TRAMA_SIZE);
+    customWrite(1, dbg);
+    free(dbg);
+
     if (received != TRAMA_SIZE) {
         // Error, connexió tancada o lectura parcial: trama no vàlida
         return -1;

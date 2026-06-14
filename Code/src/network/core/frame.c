@@ -103,31 +103,18 @@ int sendFrame(int fd_client, Frame *frame) {
 
     // Buffer para serializar la trama (320 bytes)
     uint8_t buffer[TRAMA_SIZE];
-    
+
     // Serializar la trama
     serializar_trama(frame, buffer);
-    
-    // Enviar los 320 bytes por el socket
-    long totalSent = 0;
-    long bytesLeft = TRAMA_SIZE;
-    
-    while (totalSent < TRAMA_SIZE) {
-        long sent = write(fd_client, buffer + totalSent, bytesLeft);
-        
-        if (sent < 0) {
-            // Error al enviar
-            return -1;
-        }
-        
-        if (sent == 0) {
-            // Conexión cerrada
-            return -1;
-        }
-        
-        totalSent += sent;
-        bytesLeft -= sent;
+
+    // Escriptura ÚNICA de la trama sencera (320B), tal com indica l'enunciat
+    // (Annex II): "escriure amb un sol write de 320B".
+    long sent = write(fd_client, buffer, TRAMA_SIZE);
+    if (sent != TRAMA_SIZE) {
+        // Error, connexió tancada o escriptura parcial: trama no enviada
+        return -1;
     }
-    
+
     return 0;
 }
 
@@ -138,30 +125,17 @@ int receiveFrame(int fd_client, Frame *frame) {
 
     // Buffer para recibir la trama (320 bytes)
     uint8_t buffer[TRAMA_SIZE];
-    
-    // Recibir los 320 bytes del socket
-    long totalReceived = 0;
-    long bytesLeft = TRAMA_SIZE;
-    
-    while (totalReceived < TRAMA_SIZE) {
-        long received = read(fd_client, buffer + totalReceived, bytesLeft);
-        
-        if (received < 0) {
-            // Error al recibir
-            return -1;
-        }
-        
-        if (received == 0) {
-            // Conexión cerrada por el otro lado
-            return -1;
-        }
-        
-        totalReceived += received;
-        bytesLeft -= received;
+
+    // Lectura ÚNICA de la trama sencera (320B), tal com indica l'enunciat
+    // (Annex II): "llegir amb un sol read ... de 320B".
+    long received = read(fd_client, buffer, TRAMA_SIZE);
+    if (received != TRAMA_SIZE) {
+        // Error, connexió tancada o lectura parcial: trama no vàlida
+        return -1;
     }
-    
+
     // Deserializar la trama
     deserializar_trama(buffer, frame);
-    
+
     return 0;
 }

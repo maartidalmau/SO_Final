@@ -362,6 +362,7 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     IpcRequest request;
     IpcResponse response;
     memset(&request, 0, sizeof(IpcRequest));
+    memset(&response, 0, sizeof(IpcResponse));
     request.type = IPC_PLEDGE_REQUEST;
     strncpy(request.source_realm, maester->name, IPC_REALM_SIZE - 1);
     strncpy(request.source_ip, maester->ip, IPC_IP_SIZE - 1);
@@ -377,7 +378,13 @@ int sendAllianceRequest(Maester *maester, const char *realmName, const char *sig
     free(routeIp);
 
     if (dispatchEnvoyRequest(maester, envoyIndex, &request, &response) < 0 || response.status != IPC_STATUS_OK) {
-        asprintf(&msg, RED "ERROR | Failed to send alliance request to [%s]\n" RESET, realmName);
+        // Mostrem la causa concreta (la porta l'envoy a response.payload): fitxer
+        // de segell inexistent, sense ruta, connexió rebutjada, md5 KO, etc.
+        if (response.payload[0] != '\0') {
+            asprintf(&msg, RED "ERROR | Pledge to [%s] failed: %s\n" RESET, realmName, response.payload);
+        } else {
+            asprintf(&msg, RED "ERROR | Failed to send alliance request to [%s]\n" RESET, realmName);
+        }
         customWrite(1, msg);
         free(msg);
         releaseEnvoy(maester, envoyIndex);

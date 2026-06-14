@@ -3,6 +3,7 @@
 #include "frameHandler.h"
 
 #include <errno.h>
+#include <sys/time.h>
 
 void *workerThread(void *arg) {
     WorkerArgs *args = (WorkerArgs *)arg;
@@ -89,8 +90,16 @@ void *serverThread(void *arg) {
             continue;
         }
         
+        // Timeout de lectura: una connexió entrant que es queda a mitges (algú
+        // connecta i no envia la trama, o un fitxer que es talla) no ha de
+        // bloquejar el worker indefinidament. 125s > 2 min del protocol.
+        struct timeval rcvTimeout;
+        rcvTimeout.tv_sec = 125;
+        rcvTimeout.tv_usec = 0;
+        setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, sizeof(rcvTimeout));
+
         WorkerArgs *workerArgs = malloc(sizeof(WorkerArgs));
-        
+
         workerArgs->clientSocket = clientSocket;
         workerArgs->maester = maester;
         workerArgs->clientAddr = clientAddr;

@@ -1,6 +1,12 @@
 #include "router.h"
 
 #include <sys/select.h>
+#include <sys/time.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#define CONNECT_TIMEOUT_SECONDS 10
+#define IO_TIMEOUT_SECONDS 125   // > 2 min del protocol; evita lectures penjades
 
 static int writeAllBytes(int fd, const uint8_t *buf, unsigned long n) {
     unsigned long total = 0;
@@ -14,13 +20,29 @@ static int writeAllBytes(int fd, const uint8_t *buf, unsigned long n) {
     return 0;
 }
 
-// Relay transparent bidireccional entre dues connexions fins que una es tanca.
-// Converteix el node intermedi en una tuberia: així les comunicacions
-// origen<->destí (handshake d'aliança, transferència de fitxers, PING...)
-// travessen els hops com si fos una connexió directa, sense modificar les
-// trames. Encadena de forma recursiva amb múltiples salts.
-static void relayBidirectional(int a, int b) {
-    uint8_t buf[1024];
+// Llegeix EXACTAMENT una trama (320B) d'un fd, gestionant lectures parcials.
+// Aquí sí cal muntar la trama sencera (a diferència de receiveFrame, que fa un
+// sol read als extrems): el relay treballa sobre un flux de bytes que pot venir
+// fragmentat de la xarxa, i ha d'alinear-se a trames per validar-les i reenviar
+// -les senceres. Retorna 0 si ha llegit una trama completa, -1 si es tanca/error.
+static int relayReadFrame(int fd, uint8_t *buf) {
+    long total = 0;
+    while (total < TRAMA_SIZE) {
+        long n = read(fd, buf + total, TRAMA_SIZE - total);
+        if (n <= 0) {
+            return -1;
+        }
+        total += n;
+    }
+    return 0;
+}
+
+// Reenviament trama a trama entre dues connexions fins que una es tanca. El node
+// intermedi llegeix cada trama sencera (320B), en VALIDA el checksum (procediment
+// d'enrutament de la F2: si és erroni, NACK al hop anterior i descartar) i la
+// reenvia sense modificar ORIGIN ni DESTINATION. Encadena amb múltiples salts.
+static void relayBidirectional(const char *myName, int a, int b) {
+    uint8_t buf[TRAMA_SIZE];
     int maxfd = (a > b ? a : b) + 1;
 
     while (1) {
@@ -38,15 +60,33 @@ static void relayBidirectional(int a, int b) {
             break;  // timeout o error: tanquem el relay
         }
 
+        // Trama en direcció a->b (cap al destí)
         if (FD_ISSET(a, &readfds)) {
-            long n = read(a, buf, sizeof(buf));
-            if (n <= 0 || writeAllBytes(b, buf, (unsigned long)n) < 0) {
+            if (relayReadFrame(a, buf) < 0) {
+                break;
+            }
+            Frame f;
+            deserializar_trama(buf, &f);
+            if (!validateChecksum(&f)) {
+                sendNack(a, myName, "CHECKSUM");  // NACK al hop anterior
+                break;                            // descartem i tanquem el relay
+            }
+            if (writeAllBytes(b, buf, TRAMA_SIZE) < 0) {
                 break;
             }
         }
+        // Trama en direcció b->a (resposta cap a l'origen)
         if (FD_ISSET(b, &readfds)) {
-            long n = read(b, buf, sizeof(buf));
-            if (n <= 0 || writeAllBytes(a, buf, (unsigned long)n) < 0) {
+            if (relayReadFrame(b, buf) < 0) {
+                break;
+            }
+            Frame f;
+            deserializar_trama(buf, &f);
+            if (!validateChecksum(&f)) {
+                sendNack(b, myName, "CHECKSUM");
+                break;
+            }
+            if (writeAllBytes(a, buf, TRAMA_SIZE) < 0) {
                 break;
             }
         }
@@ -79,6 +119,14 @@ Route* findRoute(Maester *maester, const char *realmName) {
         
         // Case-insensitive comparison
         if (strcasecmp(maester->routes[i].name, realmName) == 0) {
+            // Una ruta amb IP "*.*.*.*" (o port 0) vol dir que el regne existeix
+            // però la seva ruta NO es coneix directament. A efectes d'enrutament
+            // és com si no existís: cal caure al DEFAULT (com fa el costat origen).
+            if (!maester->routes[i].ip ||
+                strcasecmp(maester->routes[i].ip, "*.*.*.*") == 0 ||
+                maester->routes[i].port <= 0) {
+                continue;  // deixa que el segon bucle apliqui la ruta DEFAULT
+            }
             result = &maester->routes[i];
             break;
         }
@@ -166,16 +214,63 @@ int connectToRealmByRoute(const char *ip, int port, int *fd_out) {
     }
     
     serverAddr.sin_port = htons(targetPort);
-    
-    // Connect to server
-    if (connect(fd_client, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+
+    // Connect amb timeout: posem el socket en no bloquejant i esperem amb select.
+    // Així un node lent o caigut NO penja la consola (el dispatch a l'envoy és
+    // síncron). Sense això, un connect() a un host inabastable bloqueja ~2 min.
+    int flags = fcntl(fd_client, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(fd_client, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    int rc = connect(fd_client, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
+    if (rc < 0 && errno == EINPROGRESS) {
+        fd_set wset;
+        FD_ZERO(&wset);
+        FD_SET(fd_client, &wset);
+        struct timeval tv;
+        tv.tv_sec = CONNECT_TIMEOUT_SECONDS;
+        tv.tv_usec = 0;
+
+        rc = select(fd_client + 1, NULL, &wset, NULL, &tv);
+        if (rc <= 0) {
+            asprintf(&msg, RED "ERROR | Connection timeout to %s:%d\n" RESET, ip, targetPort);
+            customWrite(1, msg);
+            free(msg);
+            close(fd_client);
+            return -1;
+        }
+        // Connexió completada? Comprovem el codi d'error real del socket.
+        int soErr = 0;
+        socklen_t len = sizeof(soErr);
+        if (getsockopt(fd_client, SOL_SOCKET, SO_ERROR, &soErr, &len) < 0 || soErr != 0) {
+            asprintf(&msg, RED "ERROR | Connection refused to %s:%d\n" RESET, ip, targetPort);
+            customWrite(1, msg);
+            free(msg);
+            close(fd_client);
+            return -1;
+        }
+    } else if (rc < 0) {
         asprintf(&msg, RED "ERROR | Connection refused to %s:%d\n" RESET, ip, targetPort);
         customWrite(1, msg);
         free(msg);
         close(fd_client);
         return -1;
     }
-    
+
+    // Tornem a mode bloquejant per a sendFrame/receiveFrame.
+    if (flags >= 0) {
+        fcntl(fd_client, F_SETFL, flags);
+    }
+
+    // Timeout de lectura/escriptura: si el peer accepta però no contesta, les
+    // lectures retornen error en comptes de bloquejar indefinidament.
+    struct timeval io;
+    io.tv_sec = IO_TIMEOUT_SECONDS;
+    io.tv_usec = 0;
+    setsockopt(fd_client, SOL_SOCKET, SO_RCVTIMEO, &io, sizeof(io));
+    setsockopt(fd_client, SOL_SOCKET, SO_SNDTIMEO, &io, sizeof(io));
+
     // Return socket descriptor
     *fd_out = fd_client;
     return 0;
@@ -245,9 +340,9 @@ int forwardFrame(Maester *maester, Frame *frame, int fromSocket) {
         return -1;
     }
 
-    // La primera trama ja s'ha reexpedit; ara fem de relay transparent per a
-    // la resta de la sessió (respostes, ACKs, dades del fitxer, etc.).
-    relayBidirectional(fromSocket, fd_hop);
+    // La primera trama ja s'ha reexpedit; ara reenviem trama a trama (validant
+    // el checksum de cadascuna) la resta de la sessió (respostes, ACKs, dades...).
+    relayBidirectional(maester->name, fromSocket, fd_hop);
 
     close(fd_hop);
     return 0;

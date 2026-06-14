@@ -64,6 +64,9 @@ int readConfigFile(char *filename, Maester *maester) {
 
     //Read name var
     customRead(fd, &(maester->name), '\n');
+    // El nom del regne és case sensitive, però cal eliminar-ne els '&'
+    // (caràcter reservat del protocol), igual que es fa amb les rutes.
+    removeChar(maester->name, '&');
 
     //Read path var
     customRead(fd, &(maester->path), '\n');
@@ -444,6 +447,65 @@ int decrementInventory(Maester *maester, const char *productName, int quantity) 
 
     pthread_mutex_unlock(&maester->inventory_mutex);
     return -1;
+}
+
+// Cerca l'índex d'un producte a l'inventari (sense lock; el cridador ja el té).
+static int findInventoryIndex(Maester *maester, const char *name) {
+    for (int i = 0; i < maester->numProducts; i++) {
+        if (strcasecmp(maester->inventory[i].name, name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int applyOrder(Maester *maester, char **names, int *quantities, int n, char *badOut, int badSize) {
+    if (!maester || (n > 0 && (!names || !quantities))) {
+        return 1;
+    }
+
+    pthread_mutex_lock(&maester->inventory_mutex);
+
+    int applied = 0;
+    int result = 0;  // 0 OK, 1 UNKNOWN_PRODUCT, 2 OUT_OF_STOCK
+
+    // Pas únic sota el mutex: validem i decrementem alhora. Com que tot passa
+    // dins del mateix lock, cap altre fil pot modificar l'inventari entremig, i
+    // si fallem desfem (rollback) els decrements ja aplicats -> atomicitat.
+    for (int k = 0; k < n; k++) {
+        int idx = findInventoryIndex(maester, names[k]);
+        if (idx < 0) {
+            result = 1;  // el producte no existeix al catàleg
+            if (badOut && badSize > 0) {
+                strncpy(badOut, names[k], badSize - 1);
+                badOut[badSize - 1] = '\0';
+            }
+            break;
+        }
+        if (maester->inventory[idx].amount < quantities[k]) {
+            result = 2;  // existeix però no hi ha prou quantitat
+            if (badOut && badSize > 0) {
+                strncpy(badOut, names[k], badSize - 1);
+                badOut[badSize - 1] = '\0';
+            }
+            break;
+        }
+        maester->inventory[idx].amount -= quantities[k];
+        applied++;
+    }
+
+    if (result != 0) {
+        // Rollback: tornem a sumar el que havíem decrementat
+        for (int k = 0; k < applied; k++) {
+            int idx = findInventoryIndex(maester, names[k]);
+            if (idx >= 0) {
+                maester->inventory[idx].amount += quantities[k];
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&maester->inventory_mutex);
+    return result;
 }
 
 int incrementInventory(Maester *maester, const char *productName, int quantity, float weight) {

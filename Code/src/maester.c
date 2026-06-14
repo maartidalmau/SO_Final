@@ -25,11 +25,8 @@ void rsiCtrlC() {
 void *timeoutThread(void *arg) {
     Maester *maester = (Maester *)arg;
     while (maester->running) {
-        // Dormim en trossos d'1s per reaccionar ràpid a la sortida (no és espera
-        // activa: sleep() bloqueja sense consumir CPU).
-        for (int s = 0; s < 5 && maester->running; s++) {
-            sleep(1);
-        }
+        sleep(1);
+
         if (!maester->running) {
             break;
         }

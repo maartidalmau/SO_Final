@@ -352,7 +352,8 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
         char errorData[DATA_MAX_SIZE];
         snprintf(errorData, DATA_MAX_SIZE, "AUTH&%.200s", requesterName);
         Frame errorFrame;
-        createFrame(&errorFrame, ERR_UNAUTHORIZED, myIpPort, frame->ip_origin, errorData);
+        // ORIGIN = IP:Port del receptor; DESTINATION = nom del regne origen.
+        createFrame(&errorFrame, ERR_UNAUTHORIZED, myIpPort, requesterName, errorData);
         sendFrame(fromSocket, &errorFrame);
         return;
     }
@@ -434,10 +435,9 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
 }
 
 void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
-    (void)maester;
     char *msg;
 
-    if (!frame) {
+    if (!maester || !frame) {
         return;
     }
 
@@ -451,9 +451,12 @@ void handlePingPong(Maester *maester, Frame *frame, int fromSocket) {
         customWrite(1, msg);
         free(msg);
 
-        // Create PONG
+        // Create PONG: ORIGIN = IP:Port del que respon (nosaltres);
+        // DESTINATION = origen del PING (IP:Port, l'únic identificador que en tenim).
+        char myIpPort[IP_SIZE];
+        snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
         Frame pongFrame;
-        createFrame(&pongFrame, PING_PONG, frame->ip_destination, frame->ip_origin, "PONG");
+        createFrame(&pongFrame, PING_PONG, myIpPort, frame->ip_origin, "PONG");
 
         // Send PONG response
         if (sendFrame(fromSocket, &pongFrame) < 0) {
@@ -575,7 +578,10 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     createFrame(&checkFrame, ACK_MD5SUM, "", "", checkData);
     sendFrame(fromSocket, &checkFrame);
 
-    // Processar la comanda (parsejant el buffer) i preparar RESPOSTA (0x16)
+    // Processar la comanda de forma TRANSACCIONAL: primer parsegem tota la
+    // comanda a memòria i després l'apliquem de forma ATÒMICA (applyOrder, sota
+    // el mutex). Si algun producte no existeix o no hi ha prou estoc, NO es toca
+    // res (rollback) i es respon amb el rebuig corresponent.
     char orderResponseData[DATA_MAX_SIZE];
     int response_ok = 1;
 
@@ -583,32 +589,69 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
         snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&CORRUPTED");
         response_ok = 0;
     } else {
+        // 1) Parsejar la comanda a arrays dinàmics (nom, quantitat)
+        char **names = NULL;
+        int *qtys = NULL;
+        int nItems = 0;
+        int parseErr = 0;
         char *saveptr = NULL;
         char *lineTok = content ? strtok_r(content, "\n", &saveptr) : NULL;
         while (lineTok) {
             int qty = 0;
             char product[128];
             // El producte pot tenir espais: capturem fins al final de línia
-            if (sscanf(lineTok, "%d x %127[^\n]", &qty, product) == 2) {
-                if (decrementInventory(maester, product, qty) < 0) {
-                    snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&OUT_OF_STOCK");
-                    response_ok = 0;
+            if (sscanf(lineTok, "%d x %127[^\n]", &qty, product) == 2 && qty > 0) {
+                char **tn = realloc(names, sizeof(char *) * (nItems + 1));
+                int *tq = realloc(qtys, sizeof(int) * (nItems + 1));
+                if (!tn || !tq) {
+                    if (tn) names = tn;
+                    if (tq) qtys = tq;
+                    parseErr = 1;
                     break;
                 }
+                names = tn;
+                qtys = tq;
+                names[nItems] = strdup(product);
+                qtys[nItems] = qty;
+                nItems++;
             }
             lineTok = strtok_r(NULL, "\n", &saveptr);
         }
-        if (response_ok) {
-            // Persistim l'inventari al fitxer d'stock real
+
+        // 2) Aplicar la transacció de forma atòmica
+        char badProduct[128] = "";
+        int txn = parseErr ? -1 : applyOrder(maester, names, qtys, nItems, badProduct, sizeof(badProduct));
+
+        // Alliberar arrays de parsing
+        for (int i = 0; i < nItems; i++) {
+            free(names[i]);
+        }
+        free(names);
+        free(qtys);
+
+        if (txn == 0) {
+            // Tot validat i decrementat: persistim l'inventari real
             updateStockDB(maester->stockFile, maester);
             snprintf(orderResponseData, DATA_MAX_SIZE, "OK");
+        } else if (txn == 1) {
+            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&UNKNOWN_PRODUCT");
+            response_ok = 0;
+        } else if (txn == 2) {
+            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&OUT_OF_STOCK");
+            response_ok = 0;
+        } else {
+            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&INTERNAL");
+            response_ok = 0;
         }
     }
     free(content);
 
-    // RESPOSTA A COMANDA (0x16)
+    // RESPOSTA A COMANDA (0x16): ORIGIN = IP:Port del regne aliat (nosaltres),
+    // DESTINATION = nom del regne origen de la comanda.
+    char myIpPort[IP_SIZE];
+    snprintf(myIpPort, IP_SIZE, "%s:%d", maester->ip, maester->port);
     Frame responseFrame;
-    createFrame(&responseFrame, ORDER_RESPONSE, "", "", orderResponseData);
+    createFrame(&responseFrame, ORDER_RESPONSE, myIpPort, requesterName, orderResponseData);
     sendFrame(fromSocket, &responseFrame);
 
     if (response_ok) {

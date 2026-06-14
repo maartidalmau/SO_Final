@@ -107,8 +107,6 @@ int sendFrame(int fd_client, Frame *frame) {
     // Serializar la trama
     serializar_trama(frame, buffer);
 
-    // Escriptura ÚNICA de la trama sencera (320B), tal com indica l'enunciat
-    // (Annex II): "escriure amb un sol write de 320B".
     long sent = write(fd_client, buffer, TRAMA_SIZE);
     if (sent != TRAMA_SIZE) {
         // Error, connexió tancada o escriptura parcial: trama no enviada
@@ -125,15 +123,8 @@ int receiveFrame(int fd_client, Frame *frame) {
     // Buffer para recibir la trama (320 bytes)
     uint8_t buffer[TRAMA_SIZE];
 
-    // Lectura ÚNICA de la trama sencera (320B), tal com indica l'enunciat
-    // (Annex II): "llegir amb un sol read ... de 320B".
+    //Utilitzem aixo per evitar lectura parcial i fer-ho 'dun sol cop
     long received = recv(fd_client, buffer, TRAMA_SIZE, MSG_WAITALL);
-    
-    char *dbg;
-    asprintf(&dbg, YELLOW "[receiveFrame] read() -> %ld bytes (esperados %d)\n" RESET,
-             received, TRAMA_SIZE);
-    customWrite(1, dbg);
-    free(dbg);
 
     if (received != TRAMA_SIZE) {
         // Error, connexió tancada o lectura parcial: trama no vàlida

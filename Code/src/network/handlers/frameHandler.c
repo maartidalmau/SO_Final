@@ -171,7 +171,8 @@ void handleAllianceRequest(Maester *maester, Frame *frame, int fromSocket) {
     int recvErr = 0;
     while (received < fileSize) {
         Frame dataFrame;
-        if (receiveFrame(fromSocket, &dataFrame) < 0 || dataFrame.type != SIGIL_SEND) {
+        if (receiveFrame(fromSocket, &dataFrame) < 0 ||
+            !validateChecksum(&dataFrame) || dataFrame.type != SIGIL_SEND) {
             recvErr = 1;
             break;
         }
@@ -399,7 +400,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
 
     // Esperem ACK FITXER (0x31) conforme el sol·licitant està llest
     Frame ackFrame;
-    if (receiveFrame(fromSocket, &ackFrame) < 0 ||
+    if (receiveFrame(fromSocket, &ackFrame) < 0 || !validateChecksum(&ackFrame) ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
         free(invBuf);
         return;
@@ -423,7 +424,7 @@ void handleProductListRequest(Maester *maester, Frame *frame, int fromSocket) {
 
     // Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
     Frame checkFrame;
-    if (receiveFrame(fromSocket, &checkFrame) == 0 &&
+    if (receiveFrame(fromSocket, &checkFrame) == 0 && validateChecksum(&checkFrame) &&
         checkFrame.type == ACK_MD5SUM && strncmp(checkFrame.data, "CHECK_OK", 8) == 0) {
         asprintf(&msg, GREEN "Products delivered to [%s].\n" RESET, requesterName);
     } else {
@@ -547,7 +548,8 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
     int recvErr = 0;
     while (received < fileSize) {
         Frame dataFrame;
-        if (receiveFrame(fromSocket, &dataFrame) < 0 || dataFrame.type != ORDER_REQUEST_DATA) {
+        if (receiveFrame(fromSocket, &dataFrame) < 0 ||
+            !validateChecksum(&dataFrame) || dataFrame.type != ORDER_REQUEST_DATA) {
             recvErr = 1;
             break;
         }
@@ -610,13 +612,35 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
                 names[nItems] = strdup(product);
                 qtys[nItems] = qty;
                 nItems++;
+            } else {
+                // Línia amb contingut però amb format invàlid (o quantitat <= 0):
+                // rebutgem tota la comanda. Les línies només amb espais s'ignoren.
+                int onlySpaces = 1;
+                int i = 0;
+                while (lineTok[i] != '\0') {
+                    if (lineTok[i] != ' ' && lineTok[i] != '\t' && lineTok[i] != '\r') {
+                        onlySpaces = 0;
+                        break;
+                    }
+                    i++;
+                }
+                if (!onlySpaces) {
+                    parseErr = 1;
+                    break;
+                }
             }
             lineTok = strtok_r(NULL, "\n", &saveptr);
         }
 
-        // 2) Aplicar la transacció de forma atòmica
+        // 2) Aplicar la transacció de forma atòmica. Una comanda buida (cap ítem
+        // vàlid) o mal formada (parseErr) es rebutja sense tocar l'inventari.
         char badProduct[128] = "";
-        int txn = parseErr ? -1 : applyOrder(maester, names, qtys, nItems, badProduct, sizeof(badProduct));
+        int txn;
+        if (parseErr || nItems == 0) {
+            txn = -2;
+        } else {
+            txn = applyOrder(maester, names, qtys, nItems, badProduct, sizeof(badProduct));
+        }
 
         // Alliberar arrays de parsing
         for (int i = 0; i < nItems; i++) {
@@ -634,6 +658,9 @@ void handleTradeRequest(Maester *maester, Frame *frame, int fromSocket) {
             response_ok = 0;
         } else if (txn == 2) {
             snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&OUT_OF_STOCK");
+            response_ok = 0;
+        } else if (txn == -2) {
+            snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&INVALID_ORDER");
             response_ok = 0;
         } else {
             snprintf(orderResponseData, DATA_MAX_SIZE, "REJECT&INTERNAL");
@@ -671,7 +698,7 @@ void handleOrderResponse(Maester *maester, Frame *frame, int fromSocket) {
     char responseType[16];
     char responseDetail[256];
 
-    if (sscanf(frame->data, "%15[^|]|%255s", responseType, responseDetail) < 1) {
+    if (sscanf(frame->data, "%15[^&]&%255s", responseType, responseDetail) < 1) {
         asprintf(&msg, RED "ERROR | Invalid order response format\n" RESET);
         customWrite(1, msg);
         free(msg);

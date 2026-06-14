@@ -95,7 +95,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
 
     // Esperem ACK FITXER (0x31): B està llest per rebre el segell
     Frame ackFrame;
-    if (receiveFrame(fd_nextHop, &ackFrame) < 0 ||
+    if (receiveFrame(fd_nextHop, &ackFrame) < 0 || !validateChecksum(&ackFrame) ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
         free(sigBuf);
         close(fd_nextHop);
@@ -123,7 +123,7 @@ int envoySendAllianceRequest(const IpcRequest *request, IpcResponse *response) {
 
     // Rebem ACK MD5SUM (0x32) amb el resultat de la verificació
     Frame checkFrame;
-    if (receiveFrame(fd_nextHop, &checkFrame) < 0) {
+    if (receiveFrame(fd_nextHop, &checkFrame) < 0 || !validateChecksum(&checkFrame)) {
         close(fd_nextHop);
         fillBasicError(response, "No md5 check for sigil");
         return -1;
@@ -160,7 +160,7 @@ int envoySendAllianceResponse(const IpcRequest *request, IpcResponse *response) 
     }
 
     Frame ackFrame;
-    if (receiveFrame(fd_dest, &ackFrame) < 0) {
+    if (receiveFrame(fd_dest, &ackFrame) < 0 || !validateChecksum(&ackFrame)) {
         close(fd_dest);
         fillBasicError(response, "No ACK received");
         return -1;
@@ -195,7 +195,7 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
 
     // HEADER (0x12) o trama d'error (0x25/0x69)
     Frame headerFrame;
-    if (receiveFrame(fd_dest, &headerFrame) < 0) {
+    if (receiveFrame(fd_dest, &headerFrame) < 0 || !validateChecksum(&headerFrame)) {
         close(fd_dest);
         fillBasicError(response, "No response from target realm");
         return -1;
@@ -244,7 +244,8 @@ int envoySendProductListRequest(const IpcRequest *request, IpcResponse *response
     long received = 0;
     while (received < fileSize) {
         Frame dataFrame;
-        if (receiveFrame(fd_dest, &dataFrame) < 0 || dataFrame.type != PRODUCT_LIST_DATA) {
+        if (receiveFrame(fd_dest, &dataFrame) < 0 ||
+            !validateChecksum(&dataFrame) || dataFrame.type != PRODUCT_LIST_DATA) {
             free(recvBuf);
             close(fd_dest);
             fillBasicError(response, "Failed receiving product list data");
@@ -472,7 +473,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
 
     // Esperem ACK FITXER (0x31)
     Frame ackFrame;
-    if (receiveFrame(fd_dest, &ackFrame) < 0 ||
+    if (receiveFrame(fd_dest, &ackFrame) < 0 || !validateChecksum(&ackFrame) ||
         ackFrame.type != ACK_FILE || strncmp(ackFrame.data, "OK", 2) != 0) {
         free(tradeBuf);
         close(fd_dest);
@@ -500,7 +501,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
 
     // Rebem ACK MD5SUM (0x32)
     Frame checkFrame;
-    if (receiveFrame(fd_dest, &checkFrame) < 0) {
+    if (receiveFrame(fd_dest, &checkFrame) < 0 || !validateChecksum(&checkFrame)) {
         close(fd_dest);
         fillBasicError(response, "No md5 check for order");
         return -1;
@@ -508,7 +509,7 @@ int envoySendTradeFile(const IpcRequest *request, IpcResponse *response) {
 
     // Rebem RESPOSTA A COMANDA (0x16): OK o REJECT&<reason>
     Frame orderResp;
-    if (receiveFrame(fd_dest, &orderResp) < 0) {
+    if (receiveFrame(fd_dest, &orderResp) < 0 || !validateChecksum(&orderResp)) {
         close(fd_dest);
         fillBasicError(response, "No order response");
         return -1;
@@ -844,7 +845,7 @@ int envoySendPing(const IpcRequest *request, IpcResponse *response) {
     }
 
     Frame pongFrame;
-    if (receiveFrame(fd_dest, &pongFrame) < 0) {
+    if (receiveFrame(fd_dest, &pongFrame) < 0 || !validateChecksum(&pongFrame)) {
         close(fd_dest);
         fillBasicError(response, "No PONG response");
         return -1;

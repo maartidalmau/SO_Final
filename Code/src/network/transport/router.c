@@ -6,43 +6,9 @@
 #include <errno.h>
 
 #define CONNECT_TIMEOUT_SECONDS 10
-#define IO_TIMEOUT_SECONDS 125   // > 2 min del protocol; evita lectures penjades
+#define IO_TIMEOUT_SECONDS 125
 
-static int writeAllBytes(int fd, const uint8_t *buf, unsigned long n) {
-    unsigned long total = 0;
-    while (total < n) {
-        long w = write(fd, buf + total, n - total);
-        if (w <= 0) {
-            return -1;
-        }
-        total += (unsigned long)w;
-    }
-    return 0;
-}
-
-// Llegeix EXACTAMENT una trama (320B) d'un fd, gestionant lectures parcials.
-// Aquí sí cal muntar la trama sencera (a diferència de receiveFrame, que fa un
-// sol read als extrems): el relay treballa sobre un flux de bytes que pot venir
-// fragmentat de la xarxa, i ha d'alinear-se a trames per validar-les i reenviar
-// -les senceres. Retorna 0 si ha llegit una trama completa, -1 si es tanca/error.
-static int relayReadFrame(int fd, uint8_t *buf) {
-    long total = 0;
-    while (total < TRAMA_SIZE) {
-        long n = read(fd, buf + total, TRAMA_SIZE - total);
-        if (n <= 0) {
-            return -1;
-        }
-        total += n;
-    }
-    return 0;
-}
-
-// Reenviament trama a trama entre dues connexions fins que una es tanca. El node
-// intermedi llegeix cada trama sencera (320B), en VALIDA el checksum (procediment
-// d'enrutament de la F2: si és erroni, NACK al hop anterior i descartar) i la
-// reenvia sense modificar ORIGIN ni DESTINATION. Encadena amb múltiples salts.
 static void relayBidirectional(const char *myName, int a, int b) {
-    uint8_t buf[TRAMA_SIZE];
     int maxfd = (a > b ? a : b) + 1;
 
     while (1) {
@@ -62,31 +28,29 @@ static void relayBidirectional(const char *myName, int a, int b) {
 
         // Trama en direcció a->b (cap al destí)
         if (FD_ISSET(a, &readfds)) {
-            if (relayReadFrame(a, buf) < 0) {
+            Frame f;
+            if (receiveFrame(a, &f) < 0) {
                 break;
             }
-            Frame f;
-            deserializar_trama(buf, &f);
             if (!validateChecksum(&f)) {
                 sendNack(a, myName, "CHECKSUM");  // NACK al hop anterior
                 break;                            // descartem i tanquem el relay
             }
-            if (writeAllBytes(b, buf, TRAMA_SIZE) < 0) {
+            if (sendFrame(b, &f) < 0) {
                 break;
             }
         }
         // Trama en direcció b->a (resposta cap a l'origen)
         if (FD_ISSET(b, &readfds)) {
-            if (relayReadFrame(b, buf) < 0) {
+            Frame f;
+            if (receiveFrame(b, &f) < 0) {
                 break;
             }
-            Frame f;
-            deserializar_trama(buf, &f);
             if (!validateChecksum(&f)) {
                 sendNack(b, myName, "CHECKSUM");
                 break;
             }
-            if (writeAllBytes(a, buf, TRAMA_SIZE) < 0) {
+            if (sendFrame(a, &f) < 0) {
                 break;
             }
         }
@@ -215,9 +179,6 @@ int connectToRealmByRoute(const char *ip, int port, int *fd_out) {
     
     serverAddr.sin_port = htons(targetPort);
 
-    // Connect amb timeout: posem el socket en no bloquejant i esperem amb select.
-    // Així un node lent o caigut NO penja la consola (el dispatch a l'envoy és
-    // síncron). Sense això, un connect() a un host inabastable bloqueja ~2 min.
     int flags = fcntl(fd_client, F_GETFL, 0);
     if (flags >= 0) {
         fcntl(fd_client, F_SETFL, flags | O_NONBLOCK);
